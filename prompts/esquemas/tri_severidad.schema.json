@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["nivel", "criterio_rb01", "justificacion", "fuente"],
+  "additionalProperties": false,
+  "properties": {
+    "nivel": {
+      "type": "string",
+      "enum": ["SEV1", "SEV2", "SEV3", "SEV4"]
+    },
+    "criterio_rb01": {
+      "type": "string",
+      "minLength": 1
+    },
+    "justificacion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "fuente": {
+      "const": "rb-01"
+    }
+  }
+}

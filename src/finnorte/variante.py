@@ -16,8 +16,9 @@ Construye esto por incrementos:
   A2  → FLUJO de 4 etapas con prompts versionados en prompts/ y esquemas en prompts/esquemas/
   Av1 → RAG (contexto en el prompt) + controles + evaluación contra tu contrato de calidad
 """
-from __future__ import annotations
 
+from __future__ import annotations
+from .reglas_tri_severidad import validar_severidad
 import time
 from pathlib import Path
 
@@ -45,6 +46,14 @@ def leer_entrada(entrada: dict) -> str:
         if clave in entrada:
             return str(entrada[clave])
     raise ValueError(f"Entrada sin campo reconocido: {list(entrada)}")
+
+ETAPA_SEVERIDAD = Etapa(
+    "severidad",
+    "tri_severidad",
+    version=1,
+    usa=["senales"],
+    validar=validar_severidad,
+)
 
 
 # TODO(A2): define tus etapas. Ejemplo para v1-qa:
