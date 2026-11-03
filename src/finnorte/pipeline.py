@@ -87,8 +87,50 @@ class Pipeline:
         salidas: dict = {}
         resultados: list[ResultadoEtapa] = []
         for etapa in self.etapas:
-            # TODO(A2): implementa esta parte (ver docstring y pruebas)
-            raise NotImplementedError("Pendiente: A2")
+            p = prompts.cargar(etapa.prompt, etapa.version)
+            valores = dict(entrada)
+            for nombre in etapa.usa:
+                valor = salidas[nombre]
+                valores[nombre] = valor if isinstance(valor, str) else json.dumps(
+                    valor, ensure_ascii=False, indent=2
+                )
+            sistema, usuario = p.render(
+                **{clave: valores.get(clave, "") for clave in p.variables}
+            )
+
+            inicio = time.perf_counter()
+            costo = 0.0
+            errores: list[str] = []
+            salida: Any = None
+
+            for intentos in range(1, etapa.reintentos + 2):
+                consulta = usuario
+                if intentos > 1:
+                    consulta += "\n\nLa respuesta anterior no cumplió el formato. Corrige estos errores:\n"
+                    consulta += "\n".join(f"- {error}" for error in errores[:5])
+                    consulta += "\nDevuelve solo el JSON corregido."
+
+                r = llm.generar(
+                    consulta,
+                    sistema,
+                    json=p.salida_json,
+                    temperatura=etapa.temperatura,
+                    etiqueta=f"{self.nombre}/{etapa.nombre}/{p.nombre}",
+                )
+                costo += r.costo_usd
+                salida = r.datos if p.salida_json else r.texto
+
+                errores = validar_esquema(salida, p.esquema)
+                if p.salida_json and salida is None and not errores:
+                    errores = ["La salida no es JSON válido"]
+                if not errores and etapa.validar:
+                    errores = etapa.validar(salida, salidas)
+                if not errores:
+                    break
+
+            res = ResultadoEtapa(
+                etapa.nombre, p.nombre, not errores, salida, errores,
+                intentos, round((time.perf_counter() - inicio) * 1000, 1), costo)
             resultados.append(res)
             salidas[etapa.nombre] = res.salida
             trazas.registrar("etapa", flujo=self.nombre, etapa=res.nombre, prompt=res.prompt, ok=res.ok,
