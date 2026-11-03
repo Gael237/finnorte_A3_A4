@@ -3,23 +3,23 @@
 > Llénenlo al formar el equipo y actualícenlo en cada entrega. El profesor lo revisa junto con el historial de Git y la coevaluación.
 
 ## Datos
-| Campo | Valor |
-|---|---|
-| Equipo | |
-| Variante | v?- |
-| Repositorio | https://github.com/... |
-| Canal de comunicación | |
-| Horario fijo de trabajo semanal | |
+| Campo                           | Valor                                                       |
+|---------------------------------|-------------------------------------------------------------|
+| Equipo                          | Equipo 5                                                    |
+| Variante                        | v5-triage                                                   |
+| Repositorio                     | https://github.com/AlanGaelQC/finnorte-ia-v5-triage-equipo5 |
+| Canal de comunicación           | whatsApp                                                    |
+| Horario fijo de trabajo semanal |                                                             |
 
 ## Integrantes y roles
 Los roles **rotan en cada entrega**; todos programan.
 
-| Integrante | Usuario de GitHub | Rol Avance 1 | Rol Avance 2 | Rol Final |
-|---|---|---|---|---|
-| | | Integración (`sistema()`, fusión de ramas) | | |
-| | | Evaluación (casos, contrato, configuraciones A–D) | | |
-| | | Prompts y flujo (v1/v2, esquemas, reglas) | | |
-| | | Documento y evidencia (PDF, bitácoras) | | |
+|          Integrante            | Usuario de GitHub |      Rol Avance 1                                | Rol Avance 2 | Rol Final |
+|--------------------------------|-------------------|--------------------------------------------------|--------------|-----------|
+| Alan Gael Quintanilla Clemente |    AlanGaelQC     | Integración (`sistema()`, fusión de ramas)       |              |           |
+| Jair Emmanuel Rivera Cano      |   JairRivera14    | Evaluación (casos, contrato, configuraciones A–D)|              |           |
+| Gael Aaron Aguirre Mendez      |     Gael237       | Prompts y flujo (v1/v2, esquemas, reglas)        |              |           |
+| Axel Ivan Isaak De La Paz      |    axlisaak       | Documento y evidencia (PDF, bitácoras)           |              |           |
 
 ## Dueños de etapa del flujo (A2 · individual)
 Cada integrante es dueño de **una** etapa: su prompt v1 y esquema, su validación en código (`validar=`) y su v2 medida.
