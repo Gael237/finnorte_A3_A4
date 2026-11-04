@@ -16,8 +16,9 @@ Construye esto por incrementos:
   A2  → FLUJO de 4 etapas con prompts versionados en prompts/ y esquemas en prompts/esquemas/
   Av1 → RAG (contexto en el prompt) + controles + evaluación contra tu contrato de calidad
 """
-from __future__ import annotations
 
+from __future__ import annotations
+from .reglas_tri_severidad import validar_severidad
 import time
 from pathlib import Path
 
@@ -46,6 +47,13 @@ def leer_entrada(entrada: dict) -> str:
             return str(entrada[clave])
     raise ValueError(f"Entrada sin campo reconocido: {list(entrada)}")
 
+ETAPA_SEVERIDAD = Etapa(
+    "severidad",
+    "tri_severidad",
+    version=1,
+    usa=["senales"],
+    validar=validar_severidad,
+)
 
 # TODO(A2): define tus etapas. Ejemplo para v1-qa:
 #   Etapa("analizar", "qa_analizar"), Etapa("casos", "qa_casos", usa=["analizar"]),
@@ -95,4 +103,8 @@ def sistema(entrada: dict, config: dict | None = None) -> dict:
     # Paso 6 · Sanear la salida (cfg["controles"]):
     #   respuesta, avisos = controles.opcional(controles.sanear_salida, respuesta, por_defecto=(respuesta, []))
     #   return armar_salida(t0, respuesta, fuentes, False, errores, artefacto=final, costo_usd=r.costo_usd)
+<<<<<<< HEAD
     raise NotImplementedError("Avance 1: implementa los 6 pasos de sistema() (ver comentarios y asistente.py)")
+=======
+    raise NotImplementedError("Avance 1: implementa los 6 pasos de sistema() (ver comentarios y asistente.py)")
+>>>>>>> bc7b2b8c59485fc4a1e3856406bfcfdab11596a8
