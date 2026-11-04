@@ -39,6 +39,32 @@ def test_pipeline_rechaza_accion_destructiva(monkeypatch):
     assert res.ok is False
     assert any("destructiva" in error.lower() for error in res.etapas[0].errores)
 
+
+def test_rechaza_rb02_si_eventos_vacios_e_indicadores_none():
+    senales_sin_observaciones = {
+        "eventos": [],
+        "indicadores": {clave: None for clave in (*BOOLEANOS, *NUMERICOS)},
+        "faltantes": [],
+    }
+    errores = validar_acciones(
+        SALIDA_VALIDA,
+        {"senales": senales_sin_observaciones, "severidad": SEVERIDAD},
+    )
+    assert any("rb-02" in error and "sustentado" in error for error in errores)
+
+
+
+def test_rechaza_rb02_si_p95_es_menor_o_igual_a_3_sin_eventos():
+    indicadores = {clave: None for clave in (*BOOLEANOS, *NUMERICOS)}
+    indicadores["p95_transferencias_s"] = 1.2
+    senales_sin_alerta = {"eventos": [], "indicadores": indicadores, "faltantes": []}
+    errores = validar_acciones(
+        SALIDA_VALIDA,
+        {"senales": senales_sin_alerta, "severidad": SEVERIDAD},
+    )
+    assert any("rb-02" in error and "sustentado" in error for error in errores)
+
+
 def test_pipeline_exige_faltantes_si_no_hay_evidencia(monkeypatch):
     senales = {"eventos": [], "indicadores": INDICADORES, "faltantes": []}
     monkeypatch.setattr(llm.fake, "responder", lambda prompt, sistema: json.dumps({"acciones": [], "faltantes": []}))

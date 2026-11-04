@@ -20,7 +20,25 @@ _PATRONES_DESTRUCTIVOS = re.compile(
 _ACCIONES_VAGAS = {"revisar el incidente", "investigar el problema", "tomar acciones", "monitorear", "escalar", "revisar", "investigar"}
 
 def _texto_senales(senales: dict[str, Any]) -> str:
-    return json.dumps({"eventos": senales.get("eventos", []), "indicadores": senales.get("indicadores")}, ensure_ascii=False, sort_keys=True).casefold()
+    indicadores = senales.get("indicadores")
+    observados = {
+        clave: valor
+        for clave, valor in indicadores.items()
+        if valor is not None
+        and (
+            clave != "p95_transferencias_s"
+            or (
+                isinstance(valor, (int, float))
+                and not isinstance(valor, bool)
+                and valor > 3
+            )
+        )
+    } if isinstance(indicadores, dict) else {}
+    return json.dumps(
+        {"eventos": senales.get("eventos", []), "indicadores": observados},
+        ensure_ascii=False,
+        sort_keys=True,
+    ).casefold()
 
 def validar_acciones(datos: Any, previas: dict) -> list[str]:
     """Valida evidencia, runbooks y seguridad de las acciones propuestas."""
