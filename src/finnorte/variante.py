@@ -55,7 +55,6 @@ ETAPA_SEVERIDAD = Etapa(
     validar=validar_severidad,
 )
 
-
 # TODO(A2): define tus etapas. Ejemplo para v1-qa:
 #   Etapa("analizar", "qa_analizar"), Etapa("casos", "qa_casos", usa=["analizar"]),
 #   Etapa("revisar", "qa_revisar", usa=["analizar", "casos"]), Etapa("pytest", "qa_pytest", usa=["casos"])
@@ -104,4 +103,8 @@ def sistema(entrada: dict, config: dict | None = None) -> dict:
     # Paso 6 · Sanear la salida (cfg["controles"]):
     #   respuesta, avisos = controles.opcional(controles.sanear_salida, respuesta, por_defecto=(respuesta, []))
     #   return armar_salida(t0, respuesta, fuentes, False, errores, artefacto=final, costo_usd=r.costo_usd)
+<<<<<<< HEAD
     raise NotImplementedError("Avance 1: implementa los 6 pasos de sistema() (ver comentarios y asistente.py)")
+=======
+    raise NotImplementedError("Avance 1: implementa los 6 pasos de sistema() (ver comentarios y asistente.py)")
+>>>>>>> bc7b2b8c59485fc4a1e3856406bfcfdab11596a8
