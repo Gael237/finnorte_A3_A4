@@ -33,18 +33,18 @@ def validar_postmortem(salida: dict, previas: dict) -> list[str]:
         )
     
     # Regla 2: Detectar datos personales (patrón simple)
-    texto_completo = str(salida).lower()
+    texto_completo = str(salida)
     
     # Patrones de PII
     patrones_pii = [
-        (r'\b[a-z]+\.[a-z]+@[a-z]+\.[a-z]+', 'correo electrónico'),
-        (r'\b\d{18}\b', 'CLABE'),
-        (r'\b\d{3}[-\s]?\d{3}[-\s]?\d{4}\b', 'teléfono'),
-        (r'\b(señor|señora|sr|sra|don|doña)\s+[A-Z][a-z]+', 'tratamiento personal'),
+        (r'\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b', 'correo electrónico', re.IGNORECASE),
+        (r'\b\d{18}\b', 'CLABE', 0),
+        (r'\b\d{3}[-\s]?\d{3}[-\s]?\d{4}\b', 'teléfono', 0),
+        (r'\b(señor|señora|sr\.?|sra\.?|don|doña)\s+[A-Z][a-z]+', 'tratamiento personal', re.IGNORECASE),
     ]
     
-    for patron, tipo in patrones_pii:
-        if re.search(patron, texto_completo):
+    for patron, tipo, flags in patrones_pii:
+        if re.search(patron, texto_completo, flags):
             errores.append(
                 f"Posible dato personal detectado ({tipo}). "
                 "Los postmortems no deben incluir información de clientes"
