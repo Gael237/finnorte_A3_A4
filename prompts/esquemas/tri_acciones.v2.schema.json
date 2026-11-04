@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["acciones", "faltantes"],
+  "additionalProperties": false,
+  "properties": {
+    "acciones": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["descripcion", "runbook"],
+        "additionalProperties": false,
+        "properties": {
+          "descripcion": {"type": "string", "minLength": 20},
+          "runbook": {"type": "string", "enum": ["rb-02", "rb-03", "rb-04", "rb-05", "rb-06", "rb-07", "rb-08"]}
+        }
+      }
+    },
+    "faltantes": {"type": "array", "items": {"type": "string", "minLength": 1}}
+  }
+}
