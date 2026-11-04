@@ -1,0 +1,44 @@
+{
+  "type": "object",
+  "properties": {
+    "eventos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "hora": {"type": "string"},
+          "descripcion": {"type": "string"}
+        },
+        "required": ["hora", "descripcion"],
+        "additionalProperties": false
+      }
+    },
+    "indicadores": {
+      "type": "object",
+      "properties": {
+        "transferencias_caidas_todos": {"type": ["boolean", "null"]},
+        "acceso_caido_todos": {"type": ["boolean", "null"]},
+        "exposicion_datos": {"type": ["boolean", "null"]},
+        "falla_componente_critico": {"type": ["boolean", "null"]},
+        "alternativa_disponible": {"type": ["boolean", "null"]},
+        "falla_parcial_sin_impacto_dinero": {"type": ["boolean", "null"]},
+        "problema_menor": {"type": ["boolean", "null"]},
+        "p95_transferencias_s": {"type": ["number", "null"]},
+        "duracion_p95_sobre_3s_min": {"type": ["number", "null"]},
+        "errores_5xx_pct": {"type": ["number", "null"]}
+      },
+      "required": [
+        "transferencias_caidas_todos", "acceso_caido_todos", "exposicion_datos",
+        "falla_componente_critico", "alternativa_disponible", "falla_parcial_sin_impacto_dinero",
+        "problema_menor", "p95_transferencias_s", "duracion_p95_sobre_3s_min", "errores_5xx_pct"
+      ],
+      "additionalProperties": false
+    },
+    "faltantes": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "required": ["eventos", "indicadores", "faltantes"],
+  "additionalProperties": false
+}
