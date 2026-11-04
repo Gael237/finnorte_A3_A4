@@ -19,6 +19,7 @@ Construye esto por incrementos:
 
 from __future__ import annotations
 from .reglas_tri_severidad import validar_severidad
+from .reglas_tri_acciones import validar_acciones
 import time
 from pathlib import Path
 
@@ -53,6 +54,14 @@ ETAPA_SEVERIDAD = Etapa(
     version=1,
     usa=["senales"],
     validar=validar_severidad,
+)
+
+ETAPA_ACCIONES = Etapa(
+    "acciones",
+    "tri_acciones",
+    version=2,
+    usa=["senales", "severidad"],
+    validar=validar_acciones,
 )
 
 # TODO(A2): define tus etapas. Ejemplo para v1-qa:
@@ -103,8 +112,4 @@ def sistema(entrada: dict, config: dict | None = None) -> dict:
     # Paso 6 · Sanear la salida (cfg["controles"]):
     #   respuesta, avisos = controles.opcional(controles.sanear_salida, respuesta, por_defecto=(respuesta, []))
     #   return armar_salida(t0, respuesta, fuentes, False, errores, artefacto=final, costo_usd=r.costo_usd)
-<<<<<<< HEAD
     raise NotImplementedError("Avance 1: implementa los 6 pasos de sistema() (ver comentarios y asistente.py)")
-=======
-    raise NotImplementedError("Avance 1: implementa los 6 pasos de sistema() (ver comentarios y asistente.py)")
->>>>>>> bc7b2b8c59485fc4a1e3856406bfcfdab11596a8
