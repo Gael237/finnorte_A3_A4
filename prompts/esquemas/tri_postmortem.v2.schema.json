@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["resumen", "linea_tiempo", "causa_raiz", "deteccion", "respuesta", "acciones", "lecciones"],
+  "additionalProperties": false,
+  "properties": {
+    "resumen": {
+      "type": "object",
+      "required": ["descripcion", "duracion", "severidad", "impacto"],
+      "additionalProperties": false,
+      "properties": {
+        "descripcion": {
+          "type": "string",
+          "minLength": 10,
+          "description": "Descripción breve del incidente"
+        },
+        "duracion": {
+          "type": "string",
+          "minLength": 3,
+          "description": "Duración del incidente o INFORMACIÓN FALTANTE"
+        },
+        "severidad": {
+          "type": "string",
+          "enum": ["SEV1", "SEV2", "SEV3", "SEV4"],
+          "description": "Debe coincidir con la severidad clasificada"
+        },
+        "impacto": {
+          "type": "string",
+          "minLength": 10,
+          "description": "Impacto específico en clientes/operaciones"
+        }
+      }
+    },
+    "linea_tiempo": {
+      "type": "array",
+      "minItems": 3,
+      "description": "Mínimo 3 eventos con timestamps",
+      "items": {
+        "type": "object",
+        "required": ["hora", "evento"],
+        "additionalProperties": false,
+        "properties": {
+          "hora": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$",
+            "description": "Timestamp en formato ISO 8601"
+          },
+          "evento": {
+            "type": "string",
+            "minLength": 10,
+            "description": "Descripción del evento"
+          }
+        }
+      }
+    },
+    "causa_raiz": {
+      "type": "object",
+      "required": ["tecnica", "proceso"],
+      "additionalProperties": false,
+      "properties": {
+        "tecnica": {
+          "type": "string",
+          "minLength": 10,
+          "description": "Causa técnica específica"
+        },
+        "proceso": {
+          "type": "string",
+          "minLength": 10,
+          "description": "Falla de proceso que permitió el incidente"
+        }
+      }
+    },
+    "deteccion": {
+      "type": "object",
+      "required": ["como", "tiempo_deteccion", "gaps_observabilidad"],
+      "additionalProperties": false,
+      "properties": {
+        "como": {
+          "type": "string",
+          "minLength": 5,
+          "description": "Cómo se detectó el incidente"
+        },
+        "tiempo_deteccion": {
+          "type": "string",
+          "minLength": 3,
+          "description": "Tiempo desde inicio hasta detección o INFORMACIÓN FALTANTE"
+        },
+        "gaps_observabilidad": {
+          "type": "string",
+          "minLength": 5,
+          "description": "(v2 REQUERIDO) Qué alerta debió existir pero no existía"
+        }
+      }
+    },
+    "respuesta": {
+      "type": "object",
+      "required": ["que_funciono", "que_no_funciono"],
+      "additionalProperties": false,
+      "properties": {
+        "que_funciono": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 5
+          },
+          "description": "Aspectos positivos de la respuesta"
+        },
+        "que_no_funciono": {
+          "type": "array",
+          "minItems": 0,
+          "items": {
+            "type": "string",
+            "minLength": 5
+          },
+          "description": "Aspectos a mejorar"
+        }
+      }
+    },
+    "acciones": {
+      "type": "array",
+      "minItems": 2,
+      "description": "Mínimo 2 acciones (correctivas y/o preventivas)",
+      "items": {
+        "type": "object",
+        "required": ["descripcion", "tipo", "responsable", "fecha_estimada", "metrica_exito", "criterio_aceptacion"],
+        "additionalProperties": false,
+        "properties": {
+          "descripcion": {
+            "type": "string",
+            "minLength": 10,
+            "description": "Descripción específica de la acción"
+          },
+          "tipo": {
+            "type": "string",
+            "enum": ["correctiva", "preventiva"],
+            "description": "Tipo de acción"
+          },
+          "responsable": {
+            "type": "string",
+            "minLength": 3,
+            "description": "Rol responsable (no nombre de persona)"
+          },
+          "fecha_estimada": {
+            "type": "string",
+            "pattern": "^(\\d{4}-\\d{2}-\\d{2}|POR CONFIRMAR)$",
+            "description": "Fecha estimada YYYY-MM-DD o POR CONFIRMAR"
+          },
+          "metrica_exito": {
+            "type": "string",
+            "minLength": 10,
+            "description": "(v2 REQUERIDO) Cómo mediremos que la acción funcionó"
+          },
+          "criterio_aceptacion": {
+            "type": "string",
+            "minLength": 10,
+            "description": "(v2 REQUERIDO) Qué debe cumplir para considerarse completa"
+          }
+        }
+      }
+    },
+    "lecciones": {
+      "type": "array",
+      "minItems": 2,
+      "description": "Mínimo 2 lecciones aprendidas",
+      "items": {
+        "type": "string",
+        "minLength": 10
+      }
+    }
+  }
+}

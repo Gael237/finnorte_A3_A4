@@ -2,11 +2,9 @@
 id: tri_postmortem
 version: 1
 variables: [entrada, senales, severidad, acciones]
-salida_json: true
+salida: json
 esquema: tri_postmortem.schema.json
-cambios: |
-  v1 (2026-11-03): versión inicial. Recibe las señales extraídas, la severidad clasificada
-  y las acciones propuestas. Genera un borrador de postmortem siguiendo pm-03.
+cambios: v1 (2026-11-03) versión inicial. Recibe las señales extraídas, la severidad clasificada y las acciones propuestas. Genera un borrador de postmortem siguiendo pm-03.
 ---
 
 # Rol
@@ -130,58 +128,58 @@ Para un incidente de pool de conexiones saturado:
 {{
   "resumen": {{
     "descripcion": "Pool de conexiones de pagos-api alcanzó su límite causando timeouts en transferencias",
-    "duracion": "INFORMACIÓN FALTANTE - al menos 4 minutos registrados en el log",
-    "severidad": "SEV1",
-    "impacto": "27% de errores en endpoint de transferencias, servicio crítico degradado"
+    "duracion": "INFORMACIÓN FALTANTE: el log no registra la resolución del incidente",
+    "severidad": "SEV2",
+    "impacto": "La alerta de las 13:22 registró 27% de errores en endpoint de transferencias"
   }},
   "linea_tiempo": [
     {{"hora": "2026-10-20T13:02:11Z", "evento": "Despliegue de pagos-api v4.19 con estrategia canary al 100%"}},
-    {{"hora": "2026-10-20T13:18:40Z", "evento": "Uso del pool de BD alcanza 92%"}},
-    {{"hora": "2026-10-20T13:21:05Z", "evento": "Primera falla: TimeoutError en QueuePool (límite 20 + overflow 10)"}},
-    {{"hora": "2026-10-20T13:22:00Z", "evento": "Alerta automática: 27% de errores 5xx (umbral 5%)"}}
+    {{"hora": "2026-10-20T13:18:40Z", "evento": "WARNING: Uso del pool de BD alcanza 92%"}},
+    {{"hora": "2026-10-20T13:21:05Z", "evento": "Primera falla registrada: TimeoutError en QueuePool (límite 20 + overflow 10)"}},
+    {{"hora": "2026-10-20T13:22:00Z", "evento": "Alerta automática activada: tasa de errores 5xx alcanza 27% (umbral configurado: 5%)"}}
   ],
   "causa_raiz": {{
-    "tecnica": "Pool de conexiones configurado con límite bajo (20 + overflow 10) insuficiente para el volumen tras despliegue al 100%",
-    "proceso": "Pruebas de carga no simularon volumen real de producción. Falta monitoreo proactivo del uso del pool antes de saturación"
+    "tecnica": "Pool de conexiones configurado con límite de 20 conexiones + overflow 10. El log muestra saturación tras alcanzar este límite",
+    "proceso": "HIPÓTESIS (requiere investigación): El despliegue canary al 100% pudo incrementar la carga. No hay evidencia en el log sobre si existían pruebas de carga previas o monitoreo del pool configurado antes del warning de 92%"
   }},
   "deteccion": {{
     "como": "Alerta automática de tasa de errores 5xx",
-    "tiempo_deteccion": "20 minutos desde el warning inicial (92% uso)"
+    "tiempo_deteccion": "3 minutos 20 segundos desde el WARNING de 92% de uso (13:18:40) hasta la alerta (13:22:00)"
   }},
   "respuesta": {{
-    "que_funciono": ["Alerta automática detectó el problema", "Logs claros con trace_id para diagnóstico"],
-    "que_no_funciono": ["No hubo alerta temprana al 92% de uso del pool", "Tiempo de detección de 20 minutos es alto para SEV1"]
+    "que_funciono": ["Alerta automática detectó cuando se superó el umbral de 5% de errores", "Logs incluyen trace_id y detalles técnicos del TimeoutError"],
+    "que_no_funciono": ["El log no registra una alerta proactiva entre el WARNING de 92% y la saturación del pool", "INFORMACIÓN FALTANTE: No hay registro de acciones tomadas ni de resolución del incidente"]
   }},
   "acciones": [
     {{
-      "descripcion": "Revertir despliegue de pagos-api v4.19 siguiendo rb-08",
+      "descripcion": "SUGERIDA: Analizar logs completos y métricas del periodo para determinar si se revirtió el despliegue y cuándo se resolvió",
       "tipo": "correctiva",
       "responsable": "equipo de operaciones",
-      "fecha_estimada": "2026-10-20"
+      "fecha_estimada": "POR CONFIRMAR"
     }},
     {{
-      "descripcion": "Incrementar límite del pool a 50 + overflow 20 basado en métricas de uso",
+      "descripcion": "SUGERIDA: Revisar configuración actual del pool y ajustar límites basado en métricas de uso en producción",
       "tipo": "correctiva",
       "responsable": "equipo de pagos-api",
-      "fecha_estimada": "2026-10-21"
+      "fecha_estimada": "POR CONFIRMAR"
     }},
     {{
-      "descripcion": "Agregar alerta de uso de pool al 80% antes de saturación",
+      "descripcion": "Agregar alerta proactiva de uso de pool al 80% para actuar antes de saturación",
       "tipo": "preventiva",
       "responsable": "equipo de SRE",
-      "fecha_estimada": "2026-10-27"
+      "fecha_estimada": "POR CONFIRMAR"
     }},
     {{
-      "descripcion": "Ejecutar pruebas de carga con volumen 2x del pico actual antes de cada despliegue de pagos-api",
+      "descripcion": "HIPÓTESIS: Si se confirma que faltaron pruebas de carga, incluirlas en el checklist de pre-deploy para servicios críticos",
       "tipo": "preventiva",
       "responsable": "equipo de QA",
-      "fecha_estimada": "2026-11-03"
+      "fecha_estimada": "POR CONFIRMAR"
     }}
   ],
   "lecciones": [
-    "Los límites de recursos deben revisarse antes de despliegues al 100%",
-    "El monitoreo debe alertar antes de la saturación, no después",
-    "Los despliegues canary al 100% pueden exponer problemas de capacidad que no aparecieron en porcentajes menores"
+    "Los WARNINGs de uso alto de recursos críticos deben generar alertas proactivas, no esperar a que ocurran errores",
+    "Los logs de incidentes deben incluir las acciones de respuesta y resolución, no solo la detección del problema",
+    "La configuración de límites de recursos debe revisarse antes de despliegues que incrementen la carga"
   ]
 }}
 ```
