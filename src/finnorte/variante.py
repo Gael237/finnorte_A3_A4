@@ -18,8 +18,10 @@ Construye esto por incrementos:
 """
 
 from __future__ import annotations
+from .reglas_tri_senales import validar_senales
 from .reglas_tri_severidad import validar_severidad
 from .reglas_tri_acciones import validar_acciones
+from .reglas_tri_postmortem import validar_postmortem
 import time
 from pathlib import Path
 
@@ -48,6 +50,13 @@ def leer_entrada(entrada: dict) -> str:
             return str(entrada[clave])
     raise ValueError(f"Entrada sin campo reconocido: {list(entrada)}")
 
+ETAPA_SENALES = Etapa(
+    "senales",
+    "tri_senales",
+    version=1,
+    validar=validar_senales,
+)
+
 ETAPA_SEVERIDAD = Etapa(
     "severidad",
     "tri_severidad",
@@ -64,13 +73,48 @@ ETAPA_ACCIONES = Etapa(
     validar=validar_acciones,
 )
 
-# TODO(A2): define tus etapas. Ejemplo para v1-qa:
-#   Etapa("analizar", "qa_analizar"), Etapa("casos", "qa_casos", usa=["analizar"]),
-#   Etapa("revisar", "qa_revisar", usa=["analizar", "casos"]), Etapa("pytest", "qa_pytest", usa=["casos"])
-FLUJO = Pipeline([], nombre=VARIANTE)
-# Avance 1 · para comparar v1 contra v2 define también FLUJO_V1 con las mismas etapas y version=1
-# (o pasa version=... a cada Etapa). Si no lo defines, se usa FLUJO para las dos configuraciones.
-FLUJO_V1: Pipeline | None = None
+ETAPA_POSTMORTEM = Etapa(
+    "postmortem",
+    "tri_postmortem",
+    version=2,
+    usa=["senales", "severidad", "acciones"],
+    validar=validar_postmortem,
+)
+
+
+def _validar_acciones_v1(datos: dict, previas: dict) -> list[str]:
+    """Adapta faltantes de tri_acciones v1 (string) al validador com?n (lista)."""
+    if not isinstance(datos, dict):
+        return ["La salida v1 de acciones debe ser un objeto JSON"]
+    faltantes = datos.get("faltantes")
+    if not isinstance(faltantes, str):
+        return ["tri_acciones.v1 requiere que faltantes sea un string"]
+    adaptados = {**datos, "faltantes": [faltantes] if faltantes.strip() else []}
+    return validar_acciones(adaptados, previas)
+
+
+ETAPA_ACCIONES_V1 = Etapa(
+    "acciones",
+    "tri_acciones",
+    version=1,
+    usa=["senales", "severidad"],
+    validar=_validar_acciones_v1,
+)
+
+FLUJO = Pipeline(
+    [ETAPA_SENALES, ETAPA_SEVERIDAD, ETAPA_ACCIONES, ETAPA_POSTMORTEM],
+    nombre=VARIANTE,
+)
+FLUJO_V1 = Pipeline(
+    [
+        Etapa("senales", "tri_senales", version=1, validar=validar_senales),
+        Etapa("severidad", "tri_severidad", version=1, usa=["senales"], validar=validar_severidad),
+        ETAPA_ACCIONES_V1,
+        Etapa("postmortem", "tri_postmortem", version=1,
+              usa=["senales", "severidad", "acciones"], validar=validar_postmortem),
+    ],
+    nombre=f"{VARIANTE}-v1",
+)
 
 # Configuración del motor. guia/av1_configuraciones.py la cambia para medir A, B, C y D.
 CONFIG_POR_DEFECTO = {
