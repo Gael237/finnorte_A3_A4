@@ -17,6 +17,29 @@ RESTRICCIONES PARA INDICADORES:
 - `errores_5xx_pct` debe ser un número entre 0 y 100.
 - Registra cualquier dato faltante requerido en el arreglo `faltantes`.
 
+EJEMPLO DE SALIDA JSON ESTRICTO:
+{{
+  "eventos": [
+    {{
+      "hora": "HH:MM",
+      "descripcion": "Descripción del evento aquí"
+    }}
+  ],
+  "indicadores": {{
+    "transferencias_caidas_todos": null,
+    "acceso_caido_todos": null,
+    "exposicion_datos": null,
+    "falla_componente_critico": null,
+    "alternativa_disponible": null,
+    "falla_parcial_sin_impacto_dinero": null,
+    "problema_menor": null,
+    "p95_transferencias_s": null,
+    "duracion_p95_sobre_3s_min": null,
+    "errores_5xx_pct": null
+  }},
+  "faltantes": []
+}}
+
 ### USUARIO
 LOG DE ENTRADA:
 {entrada}
