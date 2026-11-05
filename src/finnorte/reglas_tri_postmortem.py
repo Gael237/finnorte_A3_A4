@@ -7,7 +7,55 @@ Reglas de negocio que el esquema JSON no puede verificar:
 4. Las acciones incluyen al menos una correctiva y una preventiva
 """
 import re
+from datetime import datetime, timezone
 from typing import Any
+
+
+def _reversa_cumple_rb08(previas: dict, descripcion: str) -> bool:
+    """Exige medidas comparables antes y después del despliegue y control de migración."""
+    eventos = previas.get("senales", {}).get("eventos", [])
+    despliegues = []
+    mediciones = []
+    for evento in eventos:
+        if not isinstance(evento, dict):
+            continue
+        hora = evento.get("hora")
+        texto = str(evento.get("descripcion", "")).lower()
+        try:
+            instante = datetime.fromisoformat(str(hora).replace("Z", "+00:00"))
+            if instante.tzinfo is None:
+                instante = instante.replace(tzinfo=timezone.utc)
+        except (TypeError, ValueError):
+            continue
+        if re.search(r"\b(deploy|despliegue)\b", texto):
+            despliegues.append(instante)
+        # El umbral de alerta no es una medición previa del servicio.
+        if "umbral" in texto:
+            continue
+        errores = re.search(r"(?:errores[_\s]*5xx|5xx)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*%", texto)
+        latencia = re.search(r"(?:latencia[_\s]*p95|p95)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(ms|s)\b", texto)
+        if errores:
+            mediciones.append((instante, "5xx", float(errores.group(1).replace(",", "."))))
+        if latencia:
+            valor = float(latencia.group(1).replace(",", "."))
+            mediciones.append((instante, "p95", valor * (1000 if latencia.group(2) == "s" else 1)))
+
+    empeoro = any(
+        antes_t < despliegue <= despues_t
+        and 0 <= (despues_t - despliegue).total_seconds() <= 60 * 60
+        and antes_tipo == despues_tipo and despues_valor > antes_valor
+        for despliegue in despliegues
+        for antes_t, antes_tipo, antes_valor in mediciones
+        for despues_t, despues_tipo, despues_valor in mediciones
+    )
+    desc = descripcion.lower()
+    verifica_script = "script" in desc and bool(re.search(r"verific|comprob", desc))
+    escalamiento_si_falta = (
+        "si falta" in desc and "dba" in desc
+        and bool(re.search(r"escal", desc))
+    )
+    script_confirmado = bool(re.search(r"script.{0,35}(?:confirmado|disponible|existente)", desc))
+    return empeoro and verifica_script and (escalamiento_si_falta or script_confirmado)
 
 
 def validar_postmortem(salida: dict, previas: dict) -> list[str]:
@@ -110,5 +158,41 @@ def validar_postmortem(salida: dict, previas: dict) -> list[str]:
                     "Las acciones deben ser específicas y accionables"
                 )
                 break
+
+        propone_aumentar_pool = re.search(
+            r"\b(?:aumentar|incrementar|ampliar|expandir|subir|elevar|aumento|incremento)\b"
+            r".{0,60}\bpool\b|\bpool\b.{0,60}\b"
+            r"(?:aumentar|incrementar|ampliar|expandir|subir|elevar|aumento|incremento)\b",
+            desc,
+        )
+        autorizacion_dba = re.search(
+            r"\b(?:aprobaci[oó]n|autorizaci[oó]n)\b.{0,35}\bdba\b",
+            desc,
+        )
+        niega_autorizacion = re.search(
+            r"\b(?:sin|no\s+(?:requiere|necesita|hay))\s+(?:la\s+)?"
+            r"(?:aprobaci[oó]n|autorizaci[oó]n)\b",
+            desc,
+        )
+        prohibe_aumento = re.search(
+            r"\b(?:no|nunca|bloquear|prohibir)\b.{0,50}\b"
+            r"(?:aumentar|incrementar|ampliar|expandir|subir|elevar)\b.{0,35}\bpool\b",
+            desc,
+        )
+        if propone_aumentar_pool and (
+            not autorizacion_dba or (niega_autorizacion and not prohibe_aumento)
+        ):
+            errores.append(
+                "Acción incompatible con rb-03: cualquier aumento del pool requiere "
+                "aprobación del DBA y no puede proponerse sin ella"
+            )
+
+        propone_reversa = re.search(r"\b(revertir|reversa|rollback)\b", desc)
+        if propone_reversa and not _reversa_cumple_rb08(previas, desc):
+            errores.append(
+                "Acción incompatible con rb-08: requiere mediciones comparables antes "
+                "y después del despliegue (máximo 60 minutos), verificación del script "
+                "de reversa y escalamiento al DBA si falta"
+            )
     
     return errores
