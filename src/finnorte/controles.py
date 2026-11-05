@@ -33,14 +33,28 @@ RESPUESTA_ABSTENCION = "No encuentro esa información en la documentación dispo
 
 def verificar_citas(fuentes_citadas: Iterable[str], recuperados: list[Resultado]) -> list[str]:
     """Errores por citas inventadas o ausentes. Acepta 'doc#n' o solo 'doc'."""
-    # TODO(AV1): implementa esta parte (ver docstring y pruebas)
-    raise NotImplementedError("Pendiente: AV1")
+    validas = set()
+    for resultado in recuperados:
+        validas.add(resultado.fragmento.id)
+        validas.add(resultado.fragmento.doc_id)
+
+    citas = list(fuentes_citadas or [])
+    errores = []
+
+    if recuperados and not citas:
+        errores.append("La respuesta no cita ninguna fuente")
+
+    for cita in citas:
+        identificador = str(cita).strip().removeprefix("doc:")
+        if identificador not in validas:
+            errores.append(f"Cita no recuperada (posible alucinación): {identificador}")
+
+    return errores
 
 
 def debe_abstenerse(recuperados: list[Resultado], umbral: float) -> bool:
     """True si no hay contexto suficiente para responder."""
-    # TODO(AV1): implementa esta parte (ver docstring y pruebas)
-    raise NotImplementedError("Pendiente: AV1")
+    return not recuperados or recuperados[0].puntaje < umbral
 
 
 def filtrar_clasificacion(recuperados: list[Resultado], permitidas=("publica", "interna")) -> list[Resultado]:

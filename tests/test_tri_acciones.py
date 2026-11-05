@@ -75,7 +75,13 @@ def test_pipeline_exige_faltantes_si_no_hay_evidencia(monkeypatch):
 
 def test_prompt_v2_carga_renderiza_y_etapa_completa_declara_dependencias():
     prompt = prompts.cargar("tri_acciones")
-    sistema, usuario = prompt.render(senales=json.dumps(SENALES), severidad=json.dumps(SEVERIDAD))
+    contexto = "[doc:rb-02#0] Runbook de latencia de transferencias"
+    sistema, usuario = prompt.render(
+        senales=json.dumps(SENALES),
+        severidad=json.dumps(SEVERIDAD),
+        contexto=contexto,
+    )
+    assert contexto in usuario
     assert prompt.version == 2
     assert prompt.meta["cambios"].startswith("v2")
     assert "rb-08" in sistema and "faltantes" in usuario
