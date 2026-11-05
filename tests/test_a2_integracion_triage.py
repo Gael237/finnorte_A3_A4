@@ -26,6 +26,7 @@ SENALES = {
     ],
     "indicadores": INDICADORES,
     "faltantes": [],
+    "fuentes" : []
 }
 SEVERIDAD = {
     "nivel": "SEV2",
