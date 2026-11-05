@@ -1,27 +1,36 @@
+import os
 import json
+from pathlib import Path
 from finnorte.pipeline import Pipeline, Etapa
 
-# 1. Configurar la etapa (usando la versión 2 explícitamente)
+# Forzar Gemini para la prueba de red, o dejar en fake si no hay cuota
+# os.environ["LLM_PROVIDER"] = "gemini"
+
 etapa_senales = Etapa(
     nombre="senales",
     prompt="tri_senales",
     version=2,
     usa=[],
-    reintentos=3
+    reintentos=1
 )
-
-# 2. Crear el motor
 flujo = Pipeline([etapa_senales], nombre="prueba_senales_v2")
 
-# 3. Caso de prueba con log simulado y contexto de un manual
+# Leer un log y un manual reales (ajusta las rutas a archivos reales de tu variante v5)
+archivo_log = Path("datos/v5-triage/logs/inc-01-pool.log")
+archivo_doc = Path("corpus/v5-triage/rb-01-severidades.md")
+
+entrada_real = archivo_log.read_text(encoding="utf-8") if archivo_log.exists() else "ERROR: Log no encontrado. Revisa la ruta en datos/"
+contexto_real = archivo_doc.read_text(encoding="utf-8") if archivo_doc.exists() else "ERROR: Documento no encontrado. Revisa la ruta en corpus/"
+
 caso = {
-    "entrada": "2026-11-04 10:05:00 ERROR [pagos-api] Timeout connection to SPEI. Múltiples transferencias fallidas reportadas por usuarios.",
-    "contexto": "Documento [doc:rb-05]: Si ocurren timeouts masivos hacia el componente SPEI o transferencias fallidas, se considera falla_componente_critico (true) y las transferencias caídas afectan a todos."
+    "entrada": entrada_real,
+    "contexto": contexto_real
 }
 
-print("Ejecutando prueba de tri_senales v2...")
+print(f"Proveedor efectivo: {os.environ.get('LLM_PROVIDER', 'gemini (por defecto)')}")
 res = flujo.ejecutar(caso, detener_en_error=False)
 
-print(f"\n¿Pasó la validación del esquema?: {res.ok}")
-print("\nSalida generada (JSON devuelto por el modelo):")
+print(f"\n¿Pasó res.ok?: {res.ok}")
+print(f"Errores de la etapa: {[etapa.errores for etapa in res.etapas]}")
+print("\nJSON obtenido:")
 print(json.dumps(res.salidas.get("senales"), indent=2, ensure_ascii=False))

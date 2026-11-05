@@ -1,7 +1,5 @@
 import json
-
 import jsonschema
-
 from finnorte import llm, prompts
 from finnorte.reglas_tri_acciones import validar_acciones
 from finnorte.variante import FLUJO, FLUJO_V1
@@ -18,6 +16,7 @@ INDICADORES = {
     "duracion_p95_sobre_3s_min": 11,
     "errores_5xx_pct": 7,
 }
+
 SENALES = {
     "eventos": [
         {"hora": "10:00", "descripcion": "Inicio de degradacion de pagos-api"},
@@ -26,8 +25,8 @@ SENALES = {
     ],
     "indicadores": INDICADORES,
     "faltantes": [],
-    "fuentes" : []
 }
+
 SEVERIDAD = {
     "nivel": "SEV2",
     "criterio_rb01": "p95 superior a 3 segundos por mas de 10 minutos",
@@ -89,8 +88,8 @@ POSTMORTEM = {
         "Registrar la mitigacion permite medir la duracion total del incidente.",
     ],
 }
-RESPUESTAS_VALIDAS = [SENALES, SEVERIDAD, ACCIONES, POSTMORTEM]
 
+RESPUESTAS_VALIDAS = [SENALES, SEVERIDAD, ACCIONES, POSTMORTEM]
 
 def test_flujo_lab2_encadena_cuatro_etapas_y_valida_sus_esquemas(monkeypatch):
     respuestas = list(RESPUESTAS_VALIDAS)
@@ -116,7 +115,6 @@ def test_flujo_lab2_encadena_cuatro_etapas_y_valida_sus_esquemas(monkeypatch):
     assert "Alerta de latencia p95 en pagos-api" in prompts_llm[3]
     assert "faltantes" in res.salidas["acciones"]
 
-
 def test_flujo_lab2_se_detiene_ante_severidad_fuera_de_esquema(monkeypatch):
     respuestas = [SENALES, {**SEVERIDAD, "nivel": "SEV5"}, {**SEVERIDAD, "nivel": "SEV5"}]
     llamadas = []
@@ -135,12 +133,12 @@ def test_flujo_lab2_se_detiene_ante_severidad_fuera_de_esquema(monkeypatch):
     assert "acciones" not in res.salidas and "postmortem" not in res.salidas
     assert len(llamadas) == 3
 
-
 def test_etapas_y_flujo_v1_adaptan_faltantes_string(monkeypatch):
     assert [etapa.nombre for etapa in FLUJO_V1.etapas] == ["senales", "severidad", "acciones", "postmortem"]
     etapa_acciones_v1 = FLUJO_V1.etapas[2]
     assert etapa_acciones_v1.version == 1
     assert etapa_acciones_v1.validar is not validar_acciones
+    
     previas = {"senales": SENALES, "severidad": SEVERIDAD}
     salida_v1 = {
         "acciones": [{
@@ -150,3 +148,14 @@ def test_etapas_y_flujo_v1_adaptan_faltantes_string(monkeypatch):
         "faltantes": "",
     }
     assert etapa_acciones_v1.validar(salida_v1, previas) == []
+
+def test_esquema_v2_acepta_fuentes_validas_e_inventadas():
+    """Prueba que el esquema v2 aprueba el formato de lista de textos para las citas."""
+    esquema_v2 = prompts.cargar("tri_senales", 2).esquema
+    
+    # Inyectamos el campo fuentes directo en la prueba
+    salida_valida = {**SENALES, "fuentes": ["rb-05#0"]}
+    jsonschema.validate(salida_valida, esquema_v2)
+    
+    salida_inventada = {**SENALES, "fuentes": ["rb-inventado#0"]}
+    jsonschema.validate(salida_inventada, esquema_v2)

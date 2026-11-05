@@ -1,9 +1,9 @@
 ---
 id: tri_senales
 version: 2
-cambios: Se agregó la variable de contexto y la instrucción estricta de citar fuentes usando el formato [doc:ID].
+cambios: Se agregó la variable de contexto y el formato de citas rb-05#0 en un esquema v2 independiente.
 salida: json
-esquema: tri_senales.schema.json
+esquema: tri_senales.v2.schema.json
 ---
 
 ### SISTEMA
@@ -17,7 +17,7 @@ RESTRICCIONES PARA INDICADORES:
 - `duracion_p95_sobre_3s_min` debe expresarse estrictamente en minutos.
 - `errores_5xx_pct` debe ser un número entre 0 y 100.
 - Registra cualquier dato faltante requerido en el arreglo `faltantes`.
-- Toda afirmación o regla aplicada debe citar el identificador exacto del documento fuente con el formato `[doc:ID]` (ejemplo: `[doc:ing-02]`).
+- Toda afirmación o regla aplicada debe citar el identificador exacto del documento fuente en el arreglo "fuentes" (ejemplo: "rb-05#0" o "rb-05", sin el prefijo doc:).
 
 EJEMPLO DE SALIDA JSON ESTRICTO:
 {{
@@ -40,7 +40,7 @@ EJEMPLO DE SALIDA JSON ESTRICTO:
     "errores_5xx_pct": null
   }},
   "faltantes": [],
-  "fuentes": ["[doc:ID]"]
+  "fuentes": ["rb-05#0"]
 }}
 
 ### USUARIO
