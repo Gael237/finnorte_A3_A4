@@ -1,9 +1,10 @@
 import json
-
 import jsonschema
-
+import pytest
 from finnorte import llm, prompts
 from finnorte.reglas_tri_acciones import validar_acciones
+from finnorte import variante
+from finnorte.retrieval import Fragmento, Resultado
 from finnorte.variante import FLUJO, FLUJO_V1
 
 INDICADORES = {
@@ -18,6 +19,7 @@ INDICADORES = {
     "duracion_p95_sobre_3s_min": 11,
     "errores_5xx_pct": 7,
 }
+
 SENALES = {
     "eventos": [
         {"hora": "10:00", "descripcion": "Inicio de degradacion de pagos-api"},
@@ -26,7 +28,9 @@ SENALES = {
     ],
     "indicadores": INDICADORES,
     "faltantes": [],
+    "fuentes": [],
 }
+
 SEVERIDAD = {
     "nivel": "SEV2",
     "criterio_rb01": "p95 superior a 3 segundos por mas de 10 minutos",
@@ -88,8 +92,8 @@ POSTMORTEM = {
         "Registrar la mitigacion permite medir la duracion total del incidente.",
     ],
 }
-RESPUESTAS_VALIDAS = [SENALES, SEVERIDAD, ACCIONES, POSTMORTEM]
 
+RESPUESTAS_VALIDAS = [SENALES, SEVERIDAD, ACCIONES, POSTMORTEM]
 
 def test_flujo_lab2_encadena_cuatro_etapas_y_valida_sus_esquemas(monkeypatch):
     respuestas = list(RESPUESTAS_VALIDAS)
@@ -100,12 +104,15 @@ def test_flujo_lab2_encadena_cuatro_etapas_y_valida_sus_esquemas(monkeypatch):
         return json.dumps(respuestas.pop(0), ensure_ascii=False)
 
     monkeypatch.setattr(llm.fake, "responder", responder)
-    res = FLUJO.ejecutar({"entrada": "Log simulado: alerta de latencia p95 y errores 5xx."})
+    res = FLUJO.ejecutar({"entrada": "Log simulado: alerta de latencia p95 y errores 5xx.",
+                          "contexto": "[doc:rb-02#0] Runbook de latencia."})
 
     assert res.ok, [etapa.errores for etapa in res.etapas]
     assert [etapa.nombre for etapa in res.etapas] == ["senales", "severidad", "acciones", "postmortem"]
+    assert res.etapas[0].prompt == "tri_senales.v2"
     assert set(res.salidas) == {"senales", "severidad", "acciones", "postmortem"}
     assert respuestas == []
+    assert "[doc:rb-02#0]" in prompts_llm[0]
     for etapa in FLUJO.etapas:
         jsonschema.validate(res.salidas[etapa.nombre], prompts.cargar(etapa.prompt, etapa.version).esquema)
 
@@ -114,7 +121,6 @@ def test_flujo_lab2_encadena_cuatro_etapas_y_valida_sus_esquemas(monkeypatch):
     assert "rb-02" in prompts_llm[3]
     assert "Alerta de latencia p95 en pagos-api" in prompts_llm[3]
     assert "faltantes" in res.salidas["acciones"]
-
 
 def test_flujo_lab2_se_detiene_ante_severidad_fuera_de_esquema(monkeypatch):
     respuestas = [SENALES, {**SEVERIDAD, "nivel": "SEV5"}, {**SEVERIDAD, "nivel": "SEV5"}]
@@ -134,12 +140,12 @@ def test_flujo_lab2_se_detiene_ante_severidad_fuera_de_esquema(monkeypatch):
     assert "acciones" not in res.salidas and "postmortem" not in res.salidas
     assert len(llamadas) == 3
 
-
 def test_etapas_y_flujo_v1_adaptan_faltantes_string(monkeypatch):
     assert [etapa.nombre for etapa in FLUJO_V1.etapas] == ["senales", "severidad", "acciones", "postmortem"]
     etapa_acciones_v1 = FLUJO_V1.etapas[2]
     assert etapa_acciones_v1.version == 1
     assert etapa_acciones_v1.validar is not validar_acciones
+    
     previas = {"senales": SENALES, "severidad": SEVERIDAD}
     salida_v1 = {
         "acciones": [{
@@ -149,3 +155,49 @@ def test_etapas_y_flujo_v1_adaptan_faltantes_string(monkeypatch):
         "faltantes": "",
     }
     assert etapa_acciones_v1.validar(salida_v1, previas) == []
+
+def test_esquema_v2_valida_el_formato_de_fuentes():
+    """El esquema comprueba tipos; el motor verifica los IDs recuperados."""
+    esquema_v2 = prompts.cargar("tri_senales", 2).esquema
+    
+    # Inyectamos el campo fuentes directo en la prueba
+    salida_valida = {**SENALES, "fuentes": ["rb-05#0"]}
+    jsonschema.validate(salida_valida, esquema_v2)
+    
+    salida_invalida = {**SENALES, "fuentes": [123]}
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(salida_invalida, esquema_v2)
+
+
+def test_sistema_bloquea_fuente_inventada_en_senales(monkeypatch):
+    class IndicePrueba:
+        def buscar(self, consulta, k):
+            return [
+                Resultado(Fragmento("rb-01#0", "rb-01", "Severidad", "Regla", {}), 0.9),
+                Resultado(Fragmento("rb-02#0", "rb-02", "Latencia", "Runbook", {}), 0.8),
+            ]
+
+    monkeypatch.setattr(variante, "indice", lambda: IndicePrueba())
+    respuestas = [
+        {**SENALES, "fuentes": ["rb-inventado#0"]},
+        SEVERIDAD, ACCIONES, POSTMORTEM,
+    ]
+    monkeypatch.setattr(llm.fake, "responder", lambda p, s: json.dumps(respuestas.pop(0)))
+    salida = variante.sistema({"log": "Alerta de latencia p95 y errores 5xx"},
+                              {"umbral": 0.0})
+    assert salida["abstuvo"] is True
+    assert salida["fuentes"] == []
+    assert any("rb-inventado#0" in error for error in salida["errores_citas"])
+
+
+def test_sistema_incluye_politica_rb01_ademas_del_topk_semantico(monkeypatch):
+    respuestas = [{**SENALES, "fuentes": ["rb-02#0"]},
+                  SEVERIDAD, ACCIONES, POSTMORTEM]
+    monkeypatch.setattr(llm.fake, "responder", lambda p, s: json.dumps(respuestas.pop(0)))
+    salida = variante.sistema(
+        {"archivo": "datos/v5-triage/logs/inc-01-pool.log"},
+        {"umbral": 0.0, "k": 4},
+    )
+    assert salida["abstuvo"] is False, salida["errores_citas"]
+    assert "rb-01" in salida["fuentes"]
+    assert "rb-02#0" in salida["fuentes"]

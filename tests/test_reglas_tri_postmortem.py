@@ -1,5 +1,6 @@
 """Pruebas dirigidas para validar las reglas de tri_postmortem (A2 · Axel)."""
 import pytest
+from finnorte import prompts
 from finnorte.reglas_tri_postmortem import validar_postmortem
 
 
@@ -141,7 +142,7 @@ class TestValidacionEsquemas:
             },
             "acciones": [
                 {
-                    "descripcion": "Incrementar límite del pool a 50 conexiones",
+                    "descripcion": "Solicitar aprobación del DBA antes de ajustar el límite del pool según métricas verificadas",
                     "tipo": "correctiva",
                     "responsable": "equipo SRE",
                     "fecha_estimada": "2026-10-21"
@@ -423,3 +424,111 @@ class TestValidacionSeveridad:
         errores = validar_postmortem(salida, {"severidad": {"nivel": "SEV2"}})
         errores_sev = [e for e in errores if "severidad" in e and "no coincide" in e]
         assert not errores_sev, f"Falso positivo en severidad: {errores_sev}"
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_prompt_postmortem_renderiza_contexto_y_carga_esquema(version):
+    prompt = prompts.cargar("tri_postmortem", version)
+    contexto = "[doc:rb-03#0] No aumentar el pool sin aprobación del DBA."
+    valores = {
+        "entrada": "Log sintético para comprobar el render del prompt.",
+        "senales": "{}",
+        "severidad": "{}",
+        "acciones": "{}",
+        "contexto": contexto,
+    }
+
+    sistema, usuario = prompt.render(
+        **{nombre: valores[nombre] for nombre in prompt.variables}
+    )
+
+    assert prompt.salida_json is True
+    assert isinstance(prompt.esquema, dict)
+    if version == 2:
+        assert contexto in sistema + usuario
+        texto_prompt = sistema + usuario
+        assert "rb-03" in texto_prompt and "rb-08" in texto_prompt
+        assert "datos no confiables" in texto_prompt
+    else:
+        assert "contexto" not in prompt.variables
+
+
+def _postmortem_con_acciones(acciones):
+    return {
+        "resumen": {"descripcion": "Incidente de pool", "severidad": "SEV2", "impacto": "Time-outs en pagos-api"},
+        "causa_raiz": {"tecnica": "El pool llegó al límite configurado", "proceso": "El proceso requiere revisión"},
+        "deteccion": {"como": "Alerta de errores 5xx"},
+        "lecciones": ["Validar capacidad antes de despliegues mayores"],
+        "acciones": acciones,
+    }
+
+
+def test_rechaza_aumento_pool_sin_aprobacion_dba_rb03():
+    salida = _postmortem_con_acciones([
+        {"descripcion": "Aumentar el pool de pagos-api a 50 conexiones", "tipo": "correctiva"},
+        {"descripcion": "Agregar una revisión semanal del uso del pool", "tipo": "preventiva"},
+    ])
+
+    errores = validar_postmortem(salida, {"severidad": {"nivel": "SEV2"}})
+
+    assert any("rb-03" in error and "DBA" in error for error in errores)
+
+
+def test_acepta_aumento_pool_condicionado_a_aprobacion_dba_rb03():
+    salida = _postmortem_con_acciones([
+        {"descripcion": "Solicitar aprobación del DBA antes de aumentar el pool de pagos-api", "tipo": "correctiva"},
+        {"descripcion": "Agregar una revisión semanal del uso del pool", "tipo": "preventiva"},
+    ])
+
+    errores = validar_postmortem(salida, {"severidad": {"nivel": "SEV2"}})
+
+    assert not any("rb-03" in error for error in errores)
+
+
+def test_rechaza_reversa_sin_evidencia_temporal_rb08():
+    salida = _postmortem_con_acciones([
+        {"descripcion": "Revertir el despliegue; verificar script de migración y escalar al DBA si falta", "tipo": "correctiva"},
+        {"descripcion": "Agregar una revisión posterior a despliegues", "tipo": "preventiva"},
+    ])
+    previas = {
+        "severidad": {"nivel": "SEV2"},
+        "senales": {"eventos": [
+            {"hora": "2026-10-20T13:02:11Z", "descripcion": "Despliegue de pagos-api"},
+            {"hora": "2026-10-20T14:10:00Z", "descripcion": "Errores 5xx observados"},
+        ]},
+    }
+
+    errores = validar_postmortem(salida, previas)
+
+    assert any("rb-08" in error for error in errores)
+
+
+def test_acepta_reversa_con_evidencia_y_control_de_migracion_rb08():
+    salida = _postmortem_con_acciones([
+        {"descripcion": "Revertir según rb-08: los errores 5xx empeoraron 20 min tras el despliegue; verificar script de reversa de migración y escalar al DBA si falta", "tipo": "correctiva"},
+        {"descripcion": "Agregar una revisión posterior a despliegues", "tipo": "preventiva"},
+    ])
+    previas = {
+        "severidad": {"nivel": "SEV2"},
+        "senales": {"eventos": [
+            {"hora": "2026-10-20T13:00:00Z", "descripcion": "errores_5xx=2% observados antes del despliegue"},
+            {"hora": "2026-10-20T13:02:11Z", "descripcion": "Despliegue de pagos-api"},
+            {"hora": "2026-10-20T13:22:00Z", "descripcion": "errores_5xx=27% observados tras el despliegue"},
+        ]},
+    }
+
+    errores = validar_postmortem(salida, previas)
+
+    assert not any("rb-08" in error for error in errores)
+
+
+def test_rechaza_reversa_si_solo_hay_alerta_posterior_rb08():
+    salida = _postmortem_con_acciones([
+        {"descripcion": "Revertir el despliegue; verificar script de reversa de migración y escalar al DBA si falta", "tipo": "correctiva"},
+        {"descripcion": "Agregar una revisión posterior a despliegues", "tipo": "preventiva"},
+    ])
+    previas = {"severidad": {"nivel": "SEV2"}, "senales": {"eventos": [
+        {"hora": "2026-10-20T13:02:11Z", "descripcion": "Despliegue de pagos-api"},
+        {"hora": "2026-10-20T13:22:00Z", "descripcion": "Alerta de errores_5xx=27% (umbral 5%)"},
+    ]}}
+    assert any("rb-08" in error for error in validar_postmortem(salida, previas))

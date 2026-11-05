@@ -97,14 +97,28 @@ def fragmentar(doc: Documento, tam: int = 700, solape: int = 1) -> list[Fragment
 # ───────────────────────────── vectores (A1) ─────────────────────────────
 def normalizar(m: np.ndarray) -> np.ndarray:
     """Normaliza cada fila a norma 1 (L2). Una fila de ceros se queda en ceros."""
-    # TODO(A1): implementa esta parte (ver docstring y pruebas)
-    raise NotImplementedError("Pendiente: A1")
+     # Verificames que si sea una matriz bidimensional
+    m = np.atleast_2d(np.asarray(m, dtype=np.float32))
+    normas = np.linalg.norm(m, axis=1, keepdims=True)
+
+    normas[normas == 0] = 1.0
+
+    return m / normas
 
 
 def coseno(a: np.ndarray, b: np.ndarray) -> float:
     """Similitud coseno entre dos vectores: (a·b) / (‖a‖‖b‖). Rango [-1, 1]."""
-    # TODO(A1): implementa esta parte (ver docstring y pruebas)
-    raise NotImplementedError("Pendiente: A1")
+    a = np.asarray(a)
+    b = np.asarray(b)
+    
+    # Calculamos las normas de cada vector
+    norma_a = np.linalg.norm(a)
+    norma_b = np.linalg.norm(b)
+
+    if norma_a == 0 or norma_b == 0:
+        return 0.0
+
+    return float((a @ b) / (norma_a * norma_b))
 
 
 # ───────────────────────────── índice ─────────────────────────────
@@ -137,8 +151,18 @@ class Indice:
 
     def buscar(self, consulta: str, k: int = 4, umbral: float = 0.0) -> list[Resultado]:
         """Los k fragmentos más parecidos (coseno) con puntaje ≥ umbral, de mayor a menor."""
-        # TODO(A1): implementa esta parte (ver docstring y pruebas)
-        raise NotImplementedError("Pendiente: A1")
+        vector_consulta = embed([consulta], self.proveedor)
+        q = normalizar(vector_consulta)[0]
+
+        puntajes = self.matriz @ q
+
+        indices_top = np.argsort(-puntajes)[:k]
+
+        res = []
+        for i in indices_top:
+            if puntajes[i] >= umbral:
+                res.append(Resultado(self.fragmentos[i], float(puntajes[i])))
+        
         trazas.registrar("busqueda", consulta=consulta[:200], k=k, umbral=umbral, modo="vector",
                          resultados=[(r.fragmento.id, round(r.puntaje, 4)) for r in res])
         return res

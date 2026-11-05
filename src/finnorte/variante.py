@@ -29,7 +29,7 @@ from pathlib import Path
 from . import controles, pii
 from .config import RAIZ
 from .pipeline import Etapa, Pipeline
-from .retrieval import Indice, contexto_para_prompt
+from .retrieval import Indice, Resultado, contexto_para_prompt, fragmentar, leer_documento
 
 VARIANTE = "v5-triage"          # v1-qa | v2-revisor | v3-soporte | v4-documentador | v5-triage
 _INDICE: Indice | None = None
@@ -54,7 +54,7 @@ def leer_entrada(entrada: dict) -> str:
 ETAPA_SENALES = Etapa(
     "senales",
     "tri_senales",
-    version=1,
+    version=2,
     validar=validar_senales,
 )
 
@@ -154,6 +154,18 @@ def sistema(entrada: dict, config: dict | None = None) -> dict:
         ):
             return armar_salida(t0, controles.RESPUESTA_ABSTENCION, [], True)
 
+    if cfg["usar_rag"]:
+        # Severidad v1 cita siempre rb-01. Incluimos su política fija antes de
+        # formatear el contexto; no cuenta como acierto de la búsqueda vectorial.
+        politica = next((r for r in recuperados if r.fragmento.doc_id == "rb-01"), None)
+        if politica is None:
+            ruta = RAIZ / "corpus" / VARIANTE / "rb-01-severidades.md"
+            fragmento = fragmentar(leer_documento(ruta))[0]
+            politica = Resultado(fragmento, 0.0)
+        recuperados = [politica] + [
+            r for r in recuperados if r.fragmento.doc_id != "rb-01"
+        ]
+
     contexto = contexto_para_prompt(recuperados) if recuperados else "(sin contexto)"
     flujo = FLUJO_V1 if cfg["version_prompt"] == 1 else FLUJO
     resultado = flujo.ejecutar({"entrada": texto, "contexto": contexto})
@@ -177,7 +189,8 @@ def sistema(entrada: dict, config: dict | None = None) -> dict:
 
     acciones_inmediatas = acciones.get("acciones", [])
     fuentes = []
-    candidatas = [severidad.get("fuente")]
+    candidatas = list(senales.get("fuentes", []))
+    candidatas.append(severidad.get("fuente"))
     candidatas.extend(
         accion.get("runbook")
         for accion in acciones_inmediatas
