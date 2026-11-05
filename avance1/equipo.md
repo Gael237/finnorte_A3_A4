@@ -26,10 +26,10 @@ Cada integrante es dueño de **una** etapa: su prompt v1 y esquema, su validaci�
 
 | Etapa | Nombre en `FLUJO` | Prompt (`prompts/<id>.v1.md`) | Dueño (integrante) | Usuario de GitHub |
 |---|---|---|---|---|
-| 1 | | | | |
-| 2 | | | | |
-| 3 | | | | |
-| 4 | | | | |
+| 1 | `senales` | `tri_senales` | Gael Aaron Aguirre Mendez | Gael237 |
+| 2 | `severidad` | `tri_severidad` | Jair Emmanuel Rivera Cano | JairRivera14 |
+| 3 | `acciones` | `tri_acciones` | Alan Gael Quintanilla Clemente | AlanGaelQC |
+| 4 | `postmortem` | `tri_postmortem` | Axel Ivan Isaak De La Paz | axlisaak |
 
 ## Reglas de trabajo
 - Nadie sube directo a `main`: rama → pull request → una aprobación → fusionar.
@@ -40,11 +40,12 @@ Cada integrante es dueño de **una** etapa: su prompt v1 y esquema, su validaci�
 ## Decisión de fusión (Avance 1)
 | Pieza | Opciones (de quién) | Elegida | Evidencia que la justifica |
 |---|---|---|---|
-| Buscador (A1) | | | acierto@3 en `evals/a1_*.jsonl`: |
-| Flujo (A2) | | | validaciones y consistencia en `bitacora/`: |
-| Prompts | | | |
+| Buscador (A1) | Índice vectorial y BM25 del repositorio | Índice vectorial integrado en `src/finnorte/retrieval.py` | `pytest -q` pasó; falta incorporar la comparación individual acierto@3 de cada propuesta. No se afirma una elección ganadora sin esos números. |
+| Flujo (A2) | Cuatro etapas v1 y flujo integrado | `FLUJO_V1` y `FLUJO` en `src/finnorte/variante.py` | 64 passed, 9 skipped en `main` (ejecución local de Alan, 2026-11-05). Faltan matriz de tres incidentes y tres repeticiones reales. |
+| Prompts | v1 y v2 por etapa | `FLUJO_V1` usa v1 y `FLUJO` usa v2 en las cuatro etapas | Las versiones y el formato de v2 se verificaron localmente; la mejora de calidad frente a v1 está pendiente de medir con proveedor real. |
 
 ## Registro de decisiones importantes
 | Fecha | Decisión | Alternativas descartadas | Por qué |
 |---|---|---|---|
-| | | | |
+| 2026-11-05 | Verificar 20 casos y A–D con `fake + hash`, `--rep 1` | Reportar esos porcentajes como calidad del modelo | El script corrió 12 normales, 4 fuera y 4 adversariales sin avisos de error; los valores obtenidos con fake no miden calidad ni consistencia de tres repeticiones. |
+| 2026-11-05 | Mantener pendiente la medición con Gemini | Afirmar que la evaluación real pasó | `gemini-3.6-flash` y `gemini-3.5-flash-lite` devolvieron HTTP 503 antes de producir una salida. |

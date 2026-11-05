@@ -109,7 +109,10 @@ def test_flujo_lab2_encadena_cuatro_etapas_y_valida_sus_esquemas(monkeypatch):
 
     assert res.ok, [etapa.errores for etapa in res.etapas]
     assert [etapa.nombre for etapa in res.etapas] == ["senales", "severidad", "acciones", "postmortem"]
+    assert [etapa.version for etapa in FLUJO.etapas] == [2, 2, 2, 2]
+    assert [etapa.version for etapa in FLUJO_V1.etapas] == [1, 1, 1, 1]
     assert res.etapas[0].prompt == "tri_senales.v2"
+    assert res.etapas[1].prompt == "tri_severidad.v2"
     assert set(res.salidas) == {"senales", "severidad", "acciones", "postmortem"}
     assert respuestas == []
     assert "[doc:rb-02#0]" in prompts_llm[0]
@@ -131,7 +134,10 @@ def test_flujo_lab2_se_detiene_ante_severidad_fuera_de_esquema(monkeypatch):
         return json.dumps(respuestas.pop(0), ensure_ascii=False)
 
     monkeypatch.setattr(llm.fake, "responder", responder)
-    res = FLUJO.ejecutar({"entrada": "Log simulado de prueba."})
+    res = FLUJO.ejecutar({
+        "entrada": "Log simulado de prueba.",
+        "contexto": "[doc:rb-01#0] Criterios de severidad.",
+    })
 
     assert res.ok is False
     assert [etapa.nombre for etapa in res.etapas] == ["senales", "severidad"]

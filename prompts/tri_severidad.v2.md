@@ -2,6 +2,7 @@
 id: tri_severidad
 version: 2
 descripcion: Clasifica la severidad de un incidente usando el contexto recuperado (rb-01).
+cambios: v1 incluía reglas estáticas de rb-01; v2 exige cotejar las señales con el contexto recuperado y explicar datos faltantes. La mejora de calidad está pendiente de medir.
 salida: json
 esquema: tri_severidad.schema.json
 ---
