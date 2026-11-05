@@ -23,9 +23,10 @@ from .reglas_tri_severidad import validar_severidad
 from .reglas_tri_acciones import validar_acciones
 from .reglas_tri_postmortem import validar_postmortem
 import time
+import json
 from pathlib import Path
 
-from . import controles
+from . import controles, pii
 from .config import RAIZ
 from .pipeline import Etapa, Pipeline
 from .retrieval import Indice, contexto_para_prompt
@@ -135,25 +136,95 @@ def armar_salida(t0: float, respuesta: str, fuentes: list[str], abstuvo: bool,
 
 
 def sistema(entrada: dict, config: dict | None = None) -> dict:
-    """El motor de tu variante. Sigue los 6 pasos; el caso guía (asistente.py) hace lo mismo con una sola etapa."""
+    """Conecta búsqueda, controles y las cuatro etapas de triage."""
     cfg = {**CONFIG_POR_DEFECTO, **(config or {})}
     t0 = time.perf_counter()
     texto = leer_entrada(entrada)
 
-    # Paso 1 · Recuperar (tu buscador de la A1)
-    #   recuperados = indice().buscar(texto, k=cfg["k"]) if cfg["usar_rag"] else []
-    # Paso 2 · Controles de entrada (si cfg["controles"])
-    #   recuperados = controles.opcional(controles.filtrar_clasificacion, recuperados, por_defecto=recuperados)  # Avance 2: fuera lo confidencial
-    #   if cfg["usar_rag"] and controles.debe_abstenerse(recuperados, cfg["umbral"]):
-    #       return armar_salida(t0, controles.RESPUESTA_ABSTENCION, [], True)
-    # Paso 3 · Flujo de la A2 con el contexto
-    #   flujo = FLUJO_V1 if (cfg["version_prompt"] == 1 and FLUJO_V1) else FLUJO
-    #   r = flujo.ejecutar({"entrada": texto, "contexto": contexto_para_prompt(recuperados) or "(sin contexto)"})
-    #   final = r.salidas[...]   # la salida estructurada de tu última etapa (revisa ResultadoFlujo en pipeline.py)
-    # Paso 4 · Respuesta y fuentes: convierte el artefacto a texto y toma las fuentes que citó el modelo
-    # Paso 5 · Verificar citas: errores = controles.verificar_citas(fuentes, recuperados)
-    #   si hay citas "no recuperada" y cfg["controles"] → abstente (no muestres algo con fuentes inventadas)
-    # Paso 6 · Sanear la salida (cfg["controles"]):
-    #   respuesta, avisos = controles.opcional(controles.sanear_salida, respuesta, por_defecto=(respuesta, []))
-    #   return armar_salida(t0, respuesta, fuentes, False, errores, artefacto=final, costo_usd=r.costo_usd)
-    raise NotImplementedError("Avance 1: implementa los 6 pasos de sistema() (ver comentarios y asistente.py)")
+    recuperados = indice().buscar(texto, k=cfg["k"]) if cfg["usar_rag"] else []
+
+    if cfg["controles"]:
+        recuperados = controles.opcional(
+            controles.filtrar_clasificacion,
+            recuperados,
+            por_defecto=recuperados,
+        )
+        if cfg["usar_rag"] and controles.debe_abstenerse(
+            recuperados, cfg["umbral"]
+        ):
+            return armar_salida(t0, controles.RESPUESTA_ABSTENCION, [], True)
+
+    contexto = contexto_para_prompt(recuperados) if recuperados else "(sin contexto)"
+    flujo = FLUJO_V1 if cfg["version_prompt"] == 1 else FLUJO
+    resultado = flujo.ejecutar({"entrada": texto, "contexto": contexto})
+
+    if not resultado.ok:
+        return armar_salida(
+            t0, controles.RESPUESTA_ABSTENCION, [], True,
+            costo_usd=resultado.costo_usd,
+        )
+
+    senales = resultado.salidas.get("senales")
+    severidad = resultado.salidas.get("severidad")
+    acciones = resultado.salidas.get("acciones")
+    postmortem = resultado.salidas.get("postmortem")
+    if not all(isinstance(x, dict) for x in
+               (senales, severidad, acciones, postmortem)):
+        return armar_salida(
+            t0, controles.RESPUESTA_ABSTENCION, [], True,
+            costo_usd=resultado.costo_usd,
+        )
+
+    acciones_inmediatas = acciones.get("acciones", [])
+    fuentes = []
+    candidatas = [severidad.get("fuente")]
+    candidatas.extend(
+        accion.get("runbook")
+        for accion in acciones_inmediatas
+        if isinstance(accion, dict)
+    )
+    for fuente in candidatas:
+        if isinstance(fuente, str) and fuente and fuente not in fuentes:
+            fuentes.append(fuente)
+
+    causa = postmortem.get("causa_raiz", {})
+    artefacto = {
+        "severidad": severidad.get("nivel"),
+        "sintomas": senales.get("eventos", []),
+        "causa_probable": causa.get("tecnica") if isinstance(causa, dict) else None,
+        "runbook": [f for f in fuentes if f.startswith("rb-") and f != "rb-01"],
+        "acciones_inmediatas": acciones_inmediatas,
+        "incidentes_similares": [],
+        "borrador_postmortem": postmortem,
+    }
+    respuesta = json.dumps(artefacto, ensure_ascii=False)
+
+    errores = (
+        controles.verificar_citas(fuentes, recuperados)
+        if cfg["usar_rag"] else []
+    )
+    if cfg["controles"]:
+        if any("no recuperada" in error for error in errores):
+            return armar_salida(
+                t0, controles.RESPUESTA_ABSTENCION, [], True,
+                errores_citas=errores, costo_usd=resultado.costo_usd,
+            )
+
+        respuesta, _avisos = controles.opcional(
+            controles.sanear_salida,
+            respuesta,
+            por_defecto=(respuesta, []),
+        )
+        if pii.contiene_pii(respuesta) or pii.contiene_pii(
+            json.dumps(artefacto, ensure_ascii=False)
+        ):
+            return armar_salida(
+                t0, controles.RESPUESTA_ABSTENCION, [], True,
+                errores_citas=errores, costo_usd=resultado.costo_usd,
+            )
+
+    return armar_salida(
+        t0, respuesta, fuentes, False,
+        errores_citas=errores, artefacto=artefacto,
+        costo_usd=resultado.costo_usd,
+    )
