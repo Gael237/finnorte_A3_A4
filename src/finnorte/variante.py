@@ -187,6 +187,19 @@ def sistema(entrada: dict, config: dict | None = None) -> dict:
         if isinstance(fuente, str) and fuente and fuente not in fuentes:
             fuentes.append(fuente)
 
+    incidentes_similares = []
+    if cfg["usar_rag"]:
+        for recuperado in recuperados:
+            doc_id = recuperado.fragmento.doc_id
+            if (
+                doc_id in {"pm-01", "pm-02"}
+                and recuperado.puntaje >= cfg["umbral"]
+                and doc_id not in incidentes_similares
+            ):
+                incidentes_similares.append(doc_id)
+                if doc_id not in fuentes:
+                    fuentes.append(doc_id)
+
     causa = postmortem.get("causa_raiz", {})
     artefacto = {
         "severidad": severidad.get("nivel"),
@@ -194,7 +207,7 @@ def sistema(entrada: dict, config: dict | None = None) -> dict:
         "causa_probable": causa.get("tecnica") if isinstance(causa, dict) else None,
         "runbook": [f for f in fuentes if f.startswith("rb-") and f != "rb-01"],
         "acciones_inmediatas": acciones_inmediatas,
-        "incidentes_similares": [],
+        "incidentes_similares": incidentes_similares,
         "borrador_postmortem": postmortem,
     }
     respuesta = json.dumps(artefacto, ensure_ascii=False)
