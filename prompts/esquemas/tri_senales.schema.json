@@ -37,8 +37,12 @@
     "faltantes": {
       "type": "array",
       "items": {"type": "string"}
+    },
+    "fuentes": {
+      "type": "array",
+      "items": {"type": "string"}
     }
   },
-  "required": ["eventos", "indicadores", "faltantes"],
+  "required": ["eventos", "indicadores", "faltantes", "fuentes"],
   "additionalProperties": false
 }
