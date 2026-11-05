@@ -1,36 +1,47 @@
-import os
+"""Prueba reproducible de señales v2 con un log y contexto recuperado.
+
+Desde la raíz: python guia/prueba_senales.py
+Respeta LLM_PROVIDER y EMB_PROVIDER de .env o del entorno; fake no demuestra calidad del modelo.
+"""
 import json
-from pathlib import Path
-from finnorte.pipeline import Pipeline, Etapa
 
-# Forzar Gemini para la prueba de red, o dejar en fake si no hay cuota
-# os.environ["LLM_PROVIDER"] = "gemini"
+from finnorte import controles
+from finnorte.config import RAIZ, config
+from finnorte.pipeline import Etapa, Pipeline
+from finnorte.reglas_tri_senales import validar_senales
+from finnorte.retrieval import Indice, contexto_para_prompt
 
-etapa_senales = Etapa(
-    nombre="senales",
-    prompt="tri_senales",
-    version=2,
-    usa=[],
-    reintentos=1
-)
-flujo = Pipeline([etapa_senales], nombre="prueba_senales_v2")
 
-# Leer un log y un manual reales (ajusta las rutas a archivos reales de tu variante v5)
-archivo_log = Path("datos/v5-triage/logs/inc-01-pool.log")
-archivo_doc = Path("corpus/v5-triage/rb-01-severidades.md")
+def ejecutar():
+    log = (RAIZ / "datos/v5-triage/logs/inc-01-pool.log").read_text(encoding="utf-8")
+    indice = Indice.desde_carpeta(RAIZ / "corpus/v5-triage")
+    recuperados = [
+        r for r in indice.buscar(log, k=4)
+        if r.fragmento.clasificacion in {"publica", "interna"}
+    ]
+    if not recuperados:
+        raise RuntimeError("No se recuperó ningún fragmento permitido para la prueba")
+    contexto = contexto_para_prompt(recuperados)
 
-entrada_real = archivo_log.read_text(encoding="utf-8") if archivo_log.exists() else "ERROR: Log no encontrado. Revisa la ruta en datos/"
-contexto_real = archivo_doc.read_text(encoding="utf-8") if archivo_doc.exists() else "ERROR: Documento no encontrado. Revisa la ruta en corpus/"
+    def validar(datos, previas):
+        fuentes = datos.get("fuentes", [])
+        # Una extracción puramente del log puede no citar políticas. Si cita,
+        # cada ID sí debe corresponder a un fragmento del contexto.
+        errores_citas = controles.verificar_citas(fuentes, recuperados) if fuentes else []
+        return validar_senales(datos, previas) + errores_citas
 
-caso = {
-    "entrada": entrada_real,
-    "contexto": contexto_real
-}
+    etapa = Etapa("senales", "tri_senales", version=2, validar=validar)
+    resultado = Pipeline([etapa], nombre="prueba_senales_v2").ejecutar(
+        {"entrada": log, "contexto": contexto}
+    )
+    print(f"Proveedor efectivo: {config().llm_proveedor}/{config().llm_modelo}")
+    print("Fragmentos recuperados:", [r.fragmento.id for r in recuperados])
+    print("Etapa válida:", resultado.ok)
+    print("Errores:", resultado.etapas[0].errores)
+    if resultado.ok:
+        print(json.dumps(resultado.salidas["senales"], ensure_ascii=False, indent=2))
+    return resultado.ok
 
-print(f"Proveedor efectivo: {os.environ.get('LLM_PROVIDER', 'gemini (por defecto)')}")
-res = flujo.ejecutar(caso, detener_en_error=False)
 
-print(f"\n¿Pasó res.ok?: {res.ok}")
-print(f"Errores de la etapa: {[etapa.errores for etapa in res.etapas]}")
-print("\nJSON obtenido:")
-print(json.dumps(res.salidas.get("senales"), indent=2, ensure_ascii=False))
+if __name__ == "__main__":
+    raise SystemExit(0 if ejecutar() else 1)
