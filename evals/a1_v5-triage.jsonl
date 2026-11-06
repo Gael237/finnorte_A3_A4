@@ -1,0 +1,10 @@
+{"pregunta":"¿Qué nivel de severidad corresponde cuando las transferencias están caídas para todos y cada cuánto se actualiza el incidente?","esperado":"rb-01","tipo":"criterio"}
+{"pregunta":"Mis transferencias responden lento; ¿cuál es el orden operativo para investigar cambios recientes, el tercero externo y capacidad de la aplicación?","esperado":"rb-02","tipo":"sinonimo"}
+{"pregunta":"El log dice QueuePool limit of size 20 overflow 10 reached. ¿Qué consultas reviso y por qué no debo ampliar el pool sin autorización?","esperado":"rb-03","tipo":"exacto"}
+{"pregunta":"El servicio registra CERTIFICATE_VERIFY_FAILED al conectarse con un proveedor: ¿cómo identifico el dominio y renuevo o escalo el certificado?","esperado":"rb-04","tipo":"exacto"}
+{"pregunta":"El procesador externo de pagos interbancarios dejó de responder: ¿cómo dejar solicitudes pendientes y avisar al negocio sin reintentar en bucle?","esperado":"rb-05","tipo":"sinonimo"}
+{"pregunta":"Los avisos al cliente no salen porque un evento defectuoso detiene repetidamente al consumidor. ¿Qué hacemos con ese evento y los trabajadores?","esperado":"rb-06","tipo":"sinonimo"}
+{"pregunta":"Los contenedores se quedan sin RAM y vuelven a arrancar; ¿qué cambio reciente y qué límites de capacidad revisamos?","esperado":"rb-07","tipo":"sinonimo"}
+{"pregunta":"Después de desplegar, los errores 5xx empeoran durante la primera hora. ¿Qué procedimiento de reversa y verificación corresponde?","esperado":"rb-08","tipo":"sinonimo"}
+{"pregunta":"¿Qué ocurrió el 14 de marzo de 2026 cuando la versión 4.12 abrió conexiones por solicitud y fallaron 38 % de las transferencias?","esperado":"pm-01","tipo":"historico"}
+{"pregunta":"Busco el antecedente del corte nocturno del proveedor de transferencias por una credencial de canal seguro caducada y sin aviso previo.","esperado":"pm-02","tipo":"historico"}

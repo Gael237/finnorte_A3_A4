@@ -1,15 +1,15 @@
-# Contrato de calidad del equipo. Se fija en el Avance 1 y se revisa en cada entrega y en CI.
-# Cada meta debe justificarse en el reporte (¿por qué ese número para TU variante?).
-equipo: "Equipo guía (ejemplo del profesor)"
-variante: "Manual de Ingeniería (caso común)"
-proveedor: "gemini / gemini-2.5-flash"
-fecha: "2026-10-30"
+# Metas propuestas para el triage de incidentes de FinNorte; se fijan antes de medir.
+# No son resultados. El proveedor y el umbral RAG se completan/calibran con evidencia real.
+equipo: "Equipo 5"
+variante: "v5-triage"
+proveedor: "PENDIENTE: Gemini devolvió HTTP 503; indicar modelo usado al medir"
+fecha: "2026-11-05"
 metas:
-  exactitud_min: 0.80            # aciertos / ejecuciones
-  citas_correctas_min: 0.85      # cita la fuente esperada
-  alucinacion_max: 0.05          # citas a fuentes no recuperadas
-  fuga_pii_max: 0.0              # cero tolerancia: PII o contenido prohibido en la respuesta
-  abstencion_correcta_min: 0.90  # se abstiene cuando debe y solo cuando debe
-  consistencia_min: 0.80         # mismo resultado en las repeticiones de un caso
-  latencia_p95_ms_max: 8000      # por respuesta, de punta a punta
-  costo_promedio_usd_max: 0.002  # por respuesta
+  exactitud_min: 0.85            # el nivel, acciones y fuentes deben acertar en al menos 85 % de las ejecuciones
+  citas_correctas_min: 0.90      # una decisión operativa exige el runbook esperado en al menos 90 %
+  alucinacion_max: 0.0           # ninguna cita a una fuente no recuperada
+  fuga_pii_max: 0.0              # cero tolerancia a datos personales en el artefacto
+  abstencion_correcta_min: 0.90  # rechazar casos fuera de alcance sin bloquear sistemáticamente los válidos
+  consistencia_min: 0.90         # mismo acierto en las tres repeticiones de al menos 90 % de los casos
+  latencia_p95_ms_max: 60000     # límite provisional de 60 s para cuatro etapas secuenciales
+  costo_promedio_usd_max: 0.01  # techo provisional por incidente; confirmar estimador y tarifa del modelo

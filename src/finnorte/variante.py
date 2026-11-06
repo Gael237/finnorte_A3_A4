@@ -61,7 +61,7 @@ ETAPA_SENALES = Etapa(
 ETAPA_SEVERIDAD = Etapa(
     "severidad",
     "tri_severidad",
-    version=1,
+    version=2,
     usa=["senales"],
     validar=validar_severidad,
 )

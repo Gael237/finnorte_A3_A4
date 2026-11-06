@@ -19,7 +19,7 @@ from typing import Any, Callable
 import requests
 
 from . import trazas
-from .config import PRECIOS, Config, config
+from .config import PRECIOS, PRECIOS_POR_MODELO, Config, config
 
 ERRORES_REINTENTABLES = {408, 429, 500, 502, 503, 504}
 
@@ -42,7 +42,15 @@ class Respuesta:
 
     @property
     def costo_usd(self) -> float:
-        pin, pout = PRECIOS.get(self.proveedor, (0.0, 0.0))
+        if self.proveedor in PRECIOS_POR_MODELO:
+            precios_modelo = PRECIOS_POR_MODELO[self.proveedor]
+            if self.modelo not in precios_modelo:
+                raise LLMError(f"No hay precio configurado para {self.proveedor}/{self.modelo}")
+            pin, pout = precios_modelo[self.modelo]
+            if self.modelo == "claude-haiku-5-5" and self.tokens_entrada > 100_000:
+                pin, pout = 0.50, 2.50
+        else:
+            pin, pout = PRECIOS.get(self.proveedor, (0.0, 0.0))
         return (self.tokens_entrada * pin + self.tokens_salida * pout) / 1_000_000
 
 
@@ -134,6 +142,55 @@ def _ollama(prompt, sistema, historial, json, temperatura, cfg: Config):
     return d["message"]["content"], d.get("prompt_eval_count", 0), d.get("eval_count", 0), intentos
 
 
+def _anthropic(prompt, sistema, historial, json, temperatura, cfg: Config):
+    """Call Claude Messages API without requiring the official SDK."""
+    if not cfg.anthropic_key:
+        raise LLMError("Missing ANTHROPIC_API_KEY in .env")
+    messages = [
+        {"role": "assistant" if h["rol"] != "user" else "user", "content": h["texto"]}
+        for h in historial
+    ]
+    messages.append({"role": "user", "content": prompt})
+    system = sistema or ""
+    if json:
+        json_instruction = "Return only valid JSON, without Markdown fences or surrounding text."
+        system = f"{system}\n\n{json_instruction}" if system else json_instruction
+    body: dict = {
+        "model": cfg.llm_modelo,
+        "max_tokens": cfg.anthropic_max_tokens,
+        "messages": messages,
+    }
+    if system:
+        body["system"] = system
+    d, intentos = _post(
+        "https://api.anthropic.com/v1/messages",
+        cfg,
+        json=body,
+        headers={
+            "x-api-key": cfg.anthropic_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+    )
+    bloques = d.get("content", [])
+    texto = "".join(b.get("text", "") for b in bloques if b.get("type") == "text")
+    if not texto:
+        motivo = d.get("stop_reason") or "response has no text blocks"
+        raise LLMError(f"Empty or non-text Anthropic response ({motivo})")
+    uso = d.get("usage", {})
+    return (
+        texto,
+        uso.get("input_tokens", 0),
+        uso.get("output_tokens", 0),
+        intentos,
+        {
+            "stop_reason": d.get("stop_reason"),
+            "max_tokens": cfg.anthropic_max_tokens,
+            "limite_tokens_alcanzado": d.get("stop_reason") == "max_tokens",
+        },
+    )
+
+
 class _Fake:
     """Proveedor simulado y determinista.
 
@@ -166,7 +223,7 @@ class _Fake:
 
 
 fake = _Fake()
-_PROVEEDORES = {"gemini": _gemini, "groq": _groq, "ollama": _ollama, "fake": fake}
+_PROVEEDORES = {"anthropic": _anthropic, "gemini": _gemini, "groq": _groq, "ollama": _ollama, "fake": fake}
 
 
 # ───────────────────────────── API pública ─────────────────────────────
@@ -191,7 +248,12 @@ def generar(prompt: str, sistema: str | None = None, *, json: bool = False, temp
     t0 = time.perf_counter()
     error = None
     try:
-        texto, tin, tout, intentos = fn(prompt, sistema, historial or [], json, temperatura, cfg)
+        resultado_proveedor = fn(prompt, sistema, historial or [], json, temperatura, cfg)
+        if len(resultado_proveedor) == 5:
+            texto, tin, tout, intentos, extra = resultado_proveedor
+        else:
+            texto, tin, tout, intentos = resultado_proveedor
+            extra = {}
     except LLMError as e:
         error = str(e)
         if registrar:
@@ -199,7 +261,8 @@ def generar(prompt: str, sistema: str | None = None, *, json: bool = False, temp
                              ok=False, error=error, latencia_ms=round((time.perf_counter() - t0) * 1000, 1))
         raise
     r = Respuesta(texto=texto, proveedor=cfg.llm_proveedor, modelo=cfg.llm_modelo, tokens_entrada=tin,
-                  tokens_salida=tout, latencia_ms=round((time.perf_counter() - t0) * 1000, 1), intentos=intentos)
+                  tokens_salida=tout, latencia_ms=round((time.perf_counter() - t0) * 1000, 1),
+                  intentos=intentos, extra=extra)
     if json:
         try:
             r.datos = extraer_json(texto)
@@ -208,5 +271,6 @@ def generar(prompt: str, sistema: str | None = None, *, json: bool = False, temp
     if registrar:
         trazas.registrar("llm", etiqueta=etiqueta, proveedor=r.proveedor, modelo=r.modelo, ok=True,
                          tokens_entrada=r.tokens_entrada, tokens_salida=r.tokens_salida, intentos=r.intentos,
-                         latencia_ms=r.latencia_ms, costo_usd=round(r.costo_usd, 6), json_valido=(r.datos is not None) if json else None)
+                         latencia_ms=r.latencia_ms, costo_usd=round(r.costo_usd, 6),
+                         json_valido=(r.datos is not None) if json else None, **r.extra)
     return r

@@ -82,3 +82,25 @@ def test_regla_de_negocio_en_codigo_se_dispara():
         {"solicitud": SOLICITUD})
     assert not res.etapas[-1].ok
     assert any("rollback" in e for e in res.etapas[-1].errores)
+
+
+def test_pipeline_entrega_entrada_original_al_validador(monkeypatch):
+    entrada = {"solicitud": SOLICITUD, "log": "texto original del incidente"}
+    recibido = {}
+    monkeypatch.setattr(
+        llm.fake,
+        "responder",
+        lambda prompt, sistema: json.dumps(RESPUESTAS["cambio_analizar"]),
+    )
+
+    def validar_con_entrada_original(salida, previas):
+        recibido["entrada"] = previas.get("_entrada_original")
+        return []
+
+    flujo = Pipeline([
+        Etapa("analizar", "cambio_analizar", validar=validar_con_entrada_original),
+    ])
+    resultado = flujo.ejecutar(entrada)
+
+    assert resultado.ok
+    assert recibido["entrada"] == entrada

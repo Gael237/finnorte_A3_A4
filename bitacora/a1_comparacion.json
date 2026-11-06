@@ -1,0 +1,163 @@
+[
+  {
+    "pregunta": "¿Qué nivel de severidad corresponde cuando las transferencias están caídas para todos y cada cuánto se actualiza el incidente?",
+    "tipo": "criterio",
+    "esperado": "rb-01",
+    "vector_top3": [
+      "rb-01",
+      "rb-05",
+      "pm-01"
+    ],
+    "palabras_top3": [
+      "rb-01",
+      "pm-03",
+      "rb-02"
+    ]
+  },
+  {
+    "pregunta": "Mis transferencias responden lento; ¿cuál es el orden operativo para investigar cambios recientes, el tercero externo y capacidad de la aplicación?",
+    "tipo": "sinonimo",
+    "esperado": "rb-02",
+    "vector_top3": [
+      "rb-02",
+      "rb-03",
+      "rb-05"
+    ],
+    "palabras_top3": [
+      "rb-02",
+      "pm-01",
+      "rb-01"
+    ]
+  },
+  {
+    "pregunta": "El log dice QueuePool limit of size 20 overflow 10 reached. ¿Qué consultas reviso y por qué no debo ampliar el pool sin autorización?",
+    "tipo": "exacto",
+    "esperado": "rb-03",
+    "vector_top3": [
+      "rb-03",
+      "rb-07",
+      "rb-02"
+    ],
+    "palabras_top3": [
+      "rb-03",
+      "pm-01",
+      "rb-07"
+    ]
+  },
+  {
+    "pregunta": "El servicio registra CERTIFICATE_VERIFY_FAILED al conectarse con un proveedor: ¿cómo identifico el dominio y renuevo o escalo el certificado?",
+    "tipo": "exacto",
+    "esperado": "rb-04",
+    "vector_top3": [
+      "rb-04",
+      "pm-02",
+      "rb-06"
+    ],
+    "palabras_top3": [
+      "rb-04",
+      "pm-02",
+      "rb-06"
+    ]
+  },
+  {
+    "pregunta": "El procesador externo de pagos interbancarios dejó de responder: ¿cómo dejar solicitudes pendientes y avisar al negocio sin reintentar en bucle?",
+    "tipo": "sinonimo",
+    "esperado": "rb-05",
+    "vector_top3": [
+      "rb-05",
+      "rb-02",
+      "rb-06"
+    ],
+    "palabras_top3": [
+      "rb-05",
+      "rb-06",
+      "pm-01"
+    ]
+  },
+  {
+    "pregunta": "Los avisos al cliente no salen porque un evento defectuoso detiene repetidamente al consumidor. ¿Qué hacemos con ese evento y los trabajadores?",
+    "tipo": "sinonimo",
+    "esperado": "rb-06",
+    "vector_top3": [
+      "rb-06",
+      "pm-02",
+      "pm-03"
+    ],
+    "palabras_top3": [
+      "pm-02",
+      "rb-06"
+    ]
+  },
+  {
+    "pregunta": "Los contenedores se quedan sin RAM y vuelven a arrancar; ¿qué cambio reciente y qué límites de capacidad revisamos?",
+    "tipo": "sinonimo",
+    "esperado": "rb-07",
+    "vector_top3": [
+      "rb-07",
+      "rb-02",
+      "rb-06"
+    ],
+    "palabras_top3": []
+  },
+  {
+    "pregunta": "Después de desplegar, los errores 5xx empeoran durante la primera hora. ¿Qué procedimiento de reversa y verificación corresponde?",
+    "tipo": "sinonimo",
+    "esperado": "rb-08",
+    "vector_top3": [
+      "rb-08",
+      "pm-01",
+      "rb-02"
+    ],
+    "palabras_top3": [
+      "rb-08",
+      "rb-01",
+      "rb-07"
+    ]
+  },
+  {
+    "pregunta": "¿Qué ocurrió el 14 de marzo de 2026 cuando la versión 4.12 abrió conexiones por solicitud y fallaron 38 % de las transferencias?",
+    "tipo": "historico",
+    "esperado": "pm-01",
+    "vector_top3": [
+      "pm-01",
+      "rb-02",
+      "rb-03"
+    ],
+    "palabras_top3": [
+      "pm-01",
+      "rb-02",
+      "rb-03"
+    ]
+  },
+  {
+    "pregunta": "Busco el antecedente del corte nocturno del proveedor de transferencias por una credencial de canal seguro caducada y sin aviso previo.",
+    "tipo": "historico",
+    "esperado": "pm-02",
+    "vector_top3": [
+      "pm-02",
+      "pm-01",
+      "rb-04"
+    ],
+    "palabras_top3": [
+      "rb-05",
+      "rb-02",
+      "rb-04"
+    ]
+  },
+  {
+    "resumen": {
+      "vector": {
+        "acierto@1": 10,
+        "acierto@3": 10,
+        "n": 10
+      },
+      "palabras": {
+        "acierto@1": 7,
+        "acierto@3": 8,
+        "n": 10
+      }
+    },
+    "variante": "v5-triage",
+    "embeddings": "gemini"
+  }
+]

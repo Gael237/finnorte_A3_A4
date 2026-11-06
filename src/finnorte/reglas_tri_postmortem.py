@@ -11,6 +11,31 @@ from datetime import datetime, timezone
 from typing import Any
 
 
+def _recomienda_ejecutar_reversa(descripcion: str) -> bool:
+    """Detecta una accion para ejecutar la reversa, no una mera mencion."""
+    desc = descripcion.lower()
+    patrones = (
+        r"\b(?:ejecutar|realizar|aplicar|iniciar)\b.{0,60}\b(?:reversa|rollback)\b",
+        r"\brevertir\b",
+        r"\b(?:recomendar|recomienda|recomiende|recomiendan|proponer|propone)\b"
+        r".{0,50}\b(?:reversa|rollback)\b",
+    )
+    for patron in patrones:
+        for match in re.finditer(patron, desc):
+            previo = desc[max(0, match.start() - 45):match.start()]
+            if re.search(
+                r"\b(?:no|nunca|evitar|evite|evita)\s+"
+                r"(?:(?:se|debe|deben|propone|proponer|proponen|recomienda|"
+                r"recomiende|recomendar|implica|supone|conviene)\s+){0,3}$",
+                previo,
+            ):
+                continue
+            if match.group(0).startswith("revertir") and re.search(r"\bantes\s+de\s*$", previo):
+                continue
+            return True
+    return False
+
+
 def _reversa_cumple_rb08(previas: dict, descripcion: str) -> bool:
     """Exige medidas comparables antes y después del despliegue y control de migración."""
     eventos = previas.get("senales", {}).get("eventos", [])
@@ -161,7 +186,8 @@ def validar_postmortem(salida: dict, previas: dict) -> list[str]:
 
         propone_aumentar_pool = re.search(
             r"\b(?:aumentar|incrementar|ampliar|expandir|subir|elevar|aumento|incremento)\b"
-            r".{0,60}\bpool\b|\bpool\b.{0,60}\b"
+            r".{0,30}\b(?:el\s+)?(?:tama\u00f1o\s+del?\s+)?pool\b"
+            r"|\bpool\b.{0,30}\b"
             r"(?:aumentar|incrementar|ampliar|expandir|subir|elevar|aumento|incremento)\b",
             desc,
         )
@@ -187,7 +213,7 @@ def validar_postmortem(salida: dict, previas: dict) -> list[str]:
                 "aprobación del DBA y no puede proponerse sin ella"
             )
 
-        propone_reversa = re.search(r"\b(revertir|reversa|rollback)\b", desc)
+        propone_reversa = _recomienda_ejecutar_reversa(desc)
         if propone_reversa and not _reversa_cumple_rb08(previas, desc):
             errores.append(
                 "Acción incompatible con rb-08: requiere mediciones comparables antes "
