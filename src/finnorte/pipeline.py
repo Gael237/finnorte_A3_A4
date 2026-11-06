@@ -124,7 +124,8 @@ class Pipeline:
                 if p.salida_json and salida is None and not errores:
                     errores = ["La salida no es JSON válido"]
                 if not errores and etapa.validar:
-                    errores = etapa.validar(salida, salidas)
+                    contexto_validacion = {**salidas, "_entrada_original": entrada}
+                    errores = etapa.validar(salida, contexto_validacion)
                 if not errores:
                     break
 

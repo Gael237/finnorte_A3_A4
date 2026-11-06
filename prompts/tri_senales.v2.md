@@ -13,6 +13,7 @@ Tu tarea es extraer los eventos y los indicadores del LOG DE ENTRADA. Consulta e
 RESTRICCIONES PARA INDICADORES:
 - Si el log no permite conocer un dato, asigna `null`. No inventes valores.
 - Asigna `false` únicamente cuando el log contenga evidencia explícita de que el evento no ocurrió.
+- `spei.envios_fallidos=100%` por sí solo no demuestra que todas las transferencias estén caídas: describe el alcance de esa métrica de envíos SPEI. Para `transferencias_caidas_todos=true` exige evidencia explícita de alcance total (todas las transferencias o todos los usuarios); si ese alcance falta, asigna `null` y registra el faltante.
 - `p95_transferencias_s` debe expresarse estrictamente en segundos.
 - `duracion_p95_sobre_3s_min` debe expresarse estrictamente en minutos.
 - `errores_5xx_pct` debe ser un número entre 0 y 100.

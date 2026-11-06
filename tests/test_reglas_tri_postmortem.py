@@ -522,6 +522,96 @@ def test_acepta_reversa_con_evidencia_y_control_de_migracion_rb08():
     assert not any("rb-08" in error for error in errores)
 
 
+def test_acepta_prohibicion_explicita_de_aumentar_pool_rb03():
+    salida = _postmortem_con_acciones([
+        {"descripcion": "No aumentar el pool sin aprobaci\u00f3n expl\u00edcita del DBA", "tipo": "correctiva"},
+        {"descripcion": "Agregar una metrica preventiva semanal del pool", "tipo": "preventiva"},
+    ])
+
+    errores = validar_postmortem(salida, {"severidad": {"nivel": "SEV2"}})
+
+    assert not any("rb-03" in error for error in errores)
+
+
+def test_no_confunde_aumento_de_trafico_con_aumento_del_pool_rb03():
+    salida = _postmortem_con_acciones([
+        {"descripcion": "Definir un punto de control verificable para canary", "tipo": "correctiva"},
+        {"descripcion": "Comparar uso de pool y tasa de errores 5xx antes de incrementar el porcentaje de trafico", "tipo": "preventiva"},
+    ])
+
+    errores = validar_postmortem(salida, {"severidad": {"nivel": "SEV2"}})
+
+    assert not any("rb-03" in error for error in errores)
+
+
+def test_rechaza_reversa_si_mediciones_solo_comparan_antes_y_despues_de_reversa_rb08():
+    salida = _postmortem_con_acciones([
+        {"descripcion": "Revertir el despliegue y medir errores 5xx en ventanas comparables antes y despues de la reversa; verificar script de reversa de migracion y escalar al DBA si falta", "tipo": "correctiva"},
+        {"descripcion": "Agregar una revision posterior a despliegues", "tipo": "preventiva"},
+    ])
+    previas = {"severidad": {"nivel": "SEV2"}, "senales": {"eventos": [
+        {"hora": "2026-10-20T13:02:11Z", "descripcion": "Despliegue de pagos-api"},
+        {"hora": "2026-10-20T13:22:00Z", "descripcion": "Alerta de errores_5xx=27% (umbral 5%)"},
+    ]}}
+
+    errores = validar_postmortem(salida, previas)
+
+    assert any("rb-08" in error for error in errores)
+
+
+def test_intento_1_reunir_mediciones_y_verificar_requisitos_pasa_rb08():
+    salida = _postmortem_con_acciones([
+        {"descripcion": "Propuesta: reunir la comparaci\u00f3n pre y post despliegue de errores 5xx y de latencia p95 de POST /v1/transferencias (ventana de 60 min antes y despu\u00e9s de 13:02:11Z) para evaluar si hay empeoramiento demostrable y decidir sobre la reversa conforme a rb-08.", "tipo": "correctiva"},
+        {"descripcion": "Propuesta: confirmar con el DBA si la versi\u00f3n 4.19 incluy\u00f3 migraciones y si existe script de reversa; identificar en el monitor de BD las consultas de mas de 5 s de pagos-api. Cancelar solo consultas confirmadas como de reportes. No aumentar el pool sin aprobaci\u00f3n expl\u00edcita del DBA.", "tipo": "correctiva"},
+        {"descripcion": "Propuesta: crear una alerta para uso del pool de conexiones de pagos-api mayor a 90 %, con destinatario de respuesta definido y registro de acuse, activa tambien durante las ventanas de despliegue.", "tipo": "preventiva"},
+    ])
+    previas = {"severidad": {"nivel": "SEV2"}, "senales": {"eventos": [
+        {"hora": "2026-10-20T13:02:11Z", "descripcion": "Despliegue de pagos-api"},
+        {"hora": "2026-10-20T13:22:00Z", "descripcion": "Alerta de errores_5xx=27% (umbral 5%)"},
+    ]}}
+
+    assert validar_postmortem(salida, previas) == []
+
+
+def test_intento_2_rechaza_ejecucion_condicional_de_reversa_rb08():
+    salida = _postmortem_con_acciones([
+        {"descripcion": "Propuesta: reunir mediciones comparables de errores 5xx y latencia p95 de POST /v1/transferencias en la ventana de 60 minutos previa al despliegue (12:02Z\u201313:02Z) y en la ventana de 60 minutos posterior (13:02Z\u201314:02Z), con la misma granularidad. Esta comparaci\u00f3n es requisito para decidir si rb-08 aplica. Mientras no exista, no se recomienda la reversa de pagos-api.", "tipo": "correctiva"},
+        {"descripcion": "Propuesta: antes de cualquier reversa de pagos-api por rb-08, confirmar con el DBA si la versi\u00f3n 4.19 incluy\u00f3 migraciones de base de datos. Si existen y no tienen script de reversa, escalar al DBA antes de revertir. Si no hay migraciones o tienen script de reversa, y la comparaci\u00f3n de la acci\u00f3n anterior confirma empeoramiento, ejecutar la reversa con estrategia inmediata y verificar la ca\u00edda de errores 5xx en 10 minutos.", "tipo": "correctiva"},
+        {"descripcion": "Propuesta: identificar con el DBA las consultas de mas de 5 s asociadas a pagos-api en el monitor de base de datos. Cancelar unicamente las que se confirme que son de reportes. No aumentar el tamano del pool sin aprobacion explicita del DBA, que debe obtenerse antes de cualquier cambio.", "tipo": "correctiva"},
+        {"descripcion": "Propuesta preventiva: definir una alerta para el uso del pool de conexiones de pagos-api por encima de un umbral acordado, con notificacion al equipo responsable, dado que la advertencia de 92 % quedo solo en log.", "tipo": "preventiva"},
+    ])
+    previas = {"severidad": {"nivel": "SEV2"}, "senales": {"eventos": [
+        {"hora": "2026-10-20T13:02:11Z", "descripcion": "Despliegue de pagos-api"},
+        {"hora": "2026-10-20T13:22:00Z", "descripcion": "Alerta de errores_5xx=27% (umbral 5%)"},
+    ]}}
+    error_rb08 = ("Acci\u00f3n incompatible con rb-08: requiere mediciones comparables antes "
+                  "y despu\u00e9s del despliegue (m\u00e1ximo 60 minutos), verificaci\u00f3n del script "
+                  "de reversa y escalamiento al DBA si falta")
+
+    errores = validar_postmortem(salida, previas)
+
+    assert errores == [error_rb08]
+
+
+@pytest.mark.parametrize(
+    "descripcion",
+    [
+        "Propuesta: obtener las métricas previas y posteriores al despliegue de 4.19 (errores 5xx de transferencias, latencia p95 y uso del pool) en la ventana de 60 minutos anterior y posterior a 13:02:11Z, y, con el DBA, verificar si la versión 4.19 incluye migraciones de base de datos y si tienen script de reversa. Hasta contar con esa comparación, no se propone ejecutar una reversa (rb-08).",
+        "Propuesta: obtener mediciones comparables de transferencias.errores_5xx y de latencia p95 de transferencias en una ventana de 60 minutos antes de 2026-10-20T13:02:11Z y en los 60 minutos posteriores, con la misma granularidad. Esta acción solo recopila evidencia y no implica ejecutar ninguna reversa.",
+        "Propuesta: verificar con el DBA si la versión 4.19 incluye migraciones de base de datos y, en ese caso, si existe script de reversa validado. Si no existe o no se puede confirmar, escalar al DBA antes de cualquier decisión sobre la versión 4.19. Esta acción no implica ejecutar reversa.",
+    ],
+)
+def test_rb08_no_marca_como_ejecucion_la_negacion_de_reversa_guardada(descripcion):
+    salida = _postmortem_con_acciones([
+        {"descripcion": descripcion, "tipo": "correctiva"},
+        {"descripcion": "Documentar las mediciones disponibles y los faltantes", "tipo": "preventiva"},
+    ])
+
+    errores = validar_postmortem(salida, {"severidad": {"nivel": "SEV2"}})
+
+    assert not any("rb-08" in error for error in errores)
+
+
 def test_rechaza_reversa_si_solo_hay_alerta_posterior_rb08():
     salida = _postmortem_con_acciones([
         {"descripcion": "Revertir el despliegue; verificar script de reversa de migración y escalar al DBA si falta", "tipo": "correctiva"},

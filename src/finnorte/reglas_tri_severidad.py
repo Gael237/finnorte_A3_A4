@@ -1,5 +1,6 @@
 """Regla de negocio para clasificar incidentes según rb-01."""
 
+import re
 from typing import Any
 
 BOOLEANOS = (
@@ -16,6 +17,29 @@ NUMERICOS = (
     "duracion_p95_sobre_3s_min",
     "errores_5xx_pct",
 )
+
+_ALCANCE_TOTAL_TRANSFERENCIAS = re.compile(
+    r"\b(?:todas\s+las\s+transferencias|todos\s+los\s+(?:usuarios|env[ií]os(?:\s+SPEI)?)|"
+    r"ca[ií]da\s+total\s+(?:de\s+)?(?:las\s+)?transferencias|"
+    r"transferencias\s+(?:ca[ií]das|fallidas)\s+para\s+todos)\b",
+    re.IGNORECASE,
+)
+
+
+def _texto_log_original(entrada_original: Any) -> str:
+    if isinstance(entrada_original, str):
+        return entrada_original
+    if isinstance(entrada_original, dict):
+        for clave in ("entrada", "log"):
+            texto = entrada_original.get(clave)
+            if isinstance(texto, str):
+                return texto
+    return ""
+
+
+def _hay_evidencia_alcance_total(entrada_original: Any) -> bool:
+    texto_log = _texto_log_original(entrada_original)
+    return bool(_ALCANCE_TOTAL_TRANSFERENCIAS.search(texto_log))
 
 
 def validar_severidad(salida: Any, salidas: dict) -> list[str]:
@@ -55,6 +79,13 @@ def validar_severidad(salida: Any, salidas: dict) -> list[str]:
         return errores
 
     i = indicadores
+    entrada_original = salidas.get("_entrada_original")
+    if i["transferencias_caidas_todos"] is True and not _hay_evidencia_alcance_total(entrada_original):
+        return [
+            "transferencias_caidas_todos=true requiere evidencia explícita de alcance total en el log original; "
+            "un evento generado por el modelo no demuestra ese alcance"
+        ]
+
     if any(i[clave] is True for clave in (
         "transferencias_caidas_todos", "acceso_caido_todos", "exposicion_datos"
     )):

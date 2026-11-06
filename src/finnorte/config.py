@@ -2,10 +2,10 @@
 
 Variables principales
 ---------------------
-LLM_PROVIDER   gemini | groq | ollama | fake      (por defecto: gemini si hay GEMINI_API_KEY, si no fake)
+LLM_PROVIDER   anthropic | gemini | groq | ollama | fake (por defecto segun las claves disponibles)
 LLM_MODEL      nombre del modelo del proveedor     (hay uno por defecto para cada proveedor)
 EMB_PROVIDER   gemini | ollama | local | hash      (hash = sin red, para pruebas y CI)
-GEMINI_API_KEY, GROQ_API_KEY, OLLAMA_URL
+ANTHROPIC_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, OLLAMA_URL
 """
 from __future__ import annotations
 
@@ -31,6 +31,7 @@ def _cargar_env(archivo: Path = RAIZ / ".env") -> None:
 _cargar_env()
 
 MODELOS_POR_DEFECTO = {
+    "anthropic": "claude-sonnet-5-5",
     "gemini": "gemini-2.5-flash",
     "groq": "llama-3.3-70b-versatile",
     "ollama": "llama3.2",
@@ -53,11 +54,21 @@ PRECIOS = {
     "fake": (0.0, 0.0),
 }
 
+PRECIOS_POR_MODELO = {
+    "anthropic": {
+        "claude-sonnet-5-5": (2.00, 10.00),
+        # Base price for prompts up to 100,000 tokens; larger Haiku prompts use a higher tier.
+        "claude-haiku-5-5": (0.10, 0.50),
+    },
+}
+
 
 def _proveedor_llm() -> str:
     p = os.getenv("LLM_PROVIDER")
     if p:
         return p.lower()
+    if os.getenv("ANTHROPIC_API_KEY"):
+        return "anthropic"
     return "gemini" if os.getenv("GEMINI_API_KEY") else "fake"
 
 
@@ -74,6 +85,8 @@ class Config:
     llm_modelo: str = ""
     emb_proveedor: str = field(default_factory=_proveedor_emb)
     emb_modelo: str = ""
+    anthropic_key: str = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY", ""))
+    anthropic_max_tokens: int = field(default_factory=lambda: int(os.getenv("ANTHROPIC_MAX_TOKENS", "4096")))
     gemini_key: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
     groq_key: str = field(default_factory=lambda: os.getenv("GROQ_API_KEY", ""))
     ollama_url: str = field(default_factory=lambda: os.getenv("OLLAMA_URL", "http://localhost:11434"))

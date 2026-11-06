@@ -17,7 +17,6 @@ auditabilidad fue hecha con ChatGPT Codex a petición de Alan; revisión final p
 """
 import json
 import hashlib
-import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,7 +36,9 @@ sys.excepthook = _aviso_pendiente
 
 from finnorte.config import config, RAIZ
 from finnorte import llm, pii, prompts as _prompts
-from finnorte.retrieval import _BM25, cargar_corpus, fragmentar
+from finnorte.a2_contexto import (
+    diagnostico_consistencia, flujo_con_fuentes_bm25, preparar_contexto_a2,
+)
 # Importar el flujo del equipo definido en variante.py
 from finnorte.variante import FLUJO, FLUJO_V1
 
@@ -48,42 +49,6 @@ def _version_de(prompt_usado: str):
     m = _re.search(r"\.v(\d+)", prompt_usado)
     vs = _prompts.versiones(prompt_usado.split(".")[0])
     return int(m.group(1)) if m else (max(vs) if vs else 1)
-
-
-def _contexto_relevante(texto: str):
-    """Aplica el BM25 del proyecto sin inicializar el índice vectorial A1."""
-    documentos = cargar_corpus(RAIZ / "corpus" / "v5-triage")
-    fragmentos = [fragmento for doc in documentos for fragmento in fragmentar(doc)]
-    bm25 = _BM25([fragmento.texto for fragmento in fragmentos])
-    puntajes = bm25.puntajes(texto)
-    ordenados = sorted(range(len(puntajes)), key=lambda i: -puntajes[i])[:8]
-    bloques = []
-    fuentes = []
-    caracteres = 0
-    for indice_fragmento in ordenados:
-        puntaje = puntajes[indice_fragmento]
-        if puntaje <= 0:
-            continue
-        fragmento = fragmentos[indice_fragmento]
-        lineas_seguras = []
-        for linea in fragmento.texto.splitlines():
-            if (
-                re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", linea)
-                or re.search(r"\b\d{2}\s+\d{4}\s+\d{4}\b", linea)
-                or re.search(r"cliente afectado", linea, re.IGNORECASE)
-            ):
-                continue
-            lineas_seguras.append(linea)
-        texto_seguro = "\n".join(lineas_seguras).strip()
-        if not texto_seguro:
-            continue
-        bloque = f"[doc:{fragmento.id}] {fragmento.titulo}\n{texto_seguro}"
-        if caracteres + len(bloque) > 4000:
-            break
-        bloques.append(bloque)
-        caracteres += len(bloque)
-        fuentes.append({"id": fragmento.id, "puntaje": round(puntaje, 6)})
-    return "\n\n".join(bloques), fuentes
 
 
 def _salida_auditable(salida):
@@ -128,6 +93,7 @@ def _ejecutar_trazable(flujo, entrada):
             "tokens_salida": respuesta.tokens_salida,
             "latencia_ms": respuesta.latencia_ms,
             "costo_usd": respuesta.costo_usd,
+            **respuesta.extra,
             "salida_json": salida,
             "salida_omitida_por_pii": salida_omitida_pii,
         })
@@ -144,7 +110,7 @@ def _ejecutar_trazable(flujo, entrada):
     return resultado, llamadas
 
 
-def _corrida_auditable(res, llamadas, inc_id, ruta_log, log_texto, contexto, fuentes_contexto, tipo):
+def _corrida_auditable(res, llamadas, inc_id, ruta_log, log_texto, contexto, fuentes_contexto, politica_severidad_obligatoria, tipo):
     return {
         "fecha_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "tipo": tipo,
@@ -154,6 +120,8 @@ def _corrida_auditable(res, llamadas, inc_id, ruta_log, log_texto, contexto, fue
         "entrada_sha256": hashlib.sha256(log_texto.encode("utf-8")).hexdigest(),
         "contexto": contexto,
         "fuentes_contexto": fuentes_contexto,
+            "fuentes_contexto_bm25": fuentes_contexto,
+            "politica_severidad_obligatoria": politica_severidad_obligatoria,
         "ok": res.ok,
         "costo_usd": res.costo_usd,
         "latencia_ms": res.latencia_ms,
@@ -181,8 +149,12 @@ import argparse
 _ap = argparse.ArgumentParser(description="Guía A2 · flujo de triage de incidentes v5")
 _ap.add_argument("--version", type=int, default=None,
                  help="versión de los prompts (1 para v1, 2 o None para la más reciente)")
+_ap.add_argument("--solo-inc-01-pool", action="store_true",
+                 help="ejecuta una vez solo inc-01-pool; omite consistencia")
+_ap.add_argument("--solo-inc-02-tls", action="store_true",
+                 help="ejecuta una vez solo inc-02-tls; omite consistencia")
 _ap.add_argument("--salida", default=None,
-                 help="nombre del archivo en bitacora/ (por defecto a2_matriz_vN)")
+                 help="nombre del archivo en bitacora/; en parcial inc-02 puede usarse para evitar sobrescrituras")
 _args = _ap.parse_args()
 
 # Determinar qué flujo usar y verificar que exista
@@ -222,6 +194,145 @@ if not flujo_a_usar.etapas:
     print("  Necesita definir FLUJO con las etapas: senales, severidad, acciones, postmortem")
     exit(1)
 
+
+if _args.solo_inc_01_pool or _args.solo_inc_02_tls:
+    inc_id = "inc-01-pool" if _args.solo_inc_01_pool else "inc-02-tls"
+    ruta_log = LOGS_ENTRADA[inc_id]
+    log_path = RAIZ / ruta_log
+    if not log_path.exists():
+        raise FileNotFoundError(f"No se encontro {ruta_log}")
+
+    log_texto = log_path.read_text(encoding="utf-8")
+    contexto, fuentes_contexto, politica_severidad_obligatoria = preparar_contexto_a2(log_texto)
+    corridas = []
+    matriz = []
+    versiones_usadas = set()
+    res = None
+
+    try:
+        flujo_corrida = flujo_con_fuentes_bm25(flujo_a_usar, fuentes_contexto)
+        res, llamadas = _ejecutar_trazable(
+            flujo_corrida, {"entrada": log_texto, "contexto": contexto}
+        )
+        corrida = _corrida_auditable(
+            res, llamadas, inc_id, ruta_log, log_texto, contexto,
+            fuentes_contexto, politica_severidad_obligatoria, "prueba-parcial",
+        )
+        for etapa in res.etapas:
+            version_etapa = _version_de(etapa.prompt)
+            versiones_usadas.add(version_etapa)
+            salida, salida_omitida = _salida_auditable(etapa.salida)
+            matriz.append({
+                "corrida_id": f"prueba-parcial-{inc_id}",
+                "tipo_corrida": "prueba-parcial",
+                "entrada": inc_id,
+                "fuentes_contexto": fuentes_contexto,
+            "fuentes_contexto_bm25": fuentes_contexto,
+            "politica_severidad_obligatoria": politica_severidad_obligatoria,
+                "etapa": etapa.nombre,
+                "prompt": etapa.prompt,
+                "version": version_etapa,
+                "valida": etapa.ok,
+                "intentos": etapa.intentos,
+                "errores": etapa.errores,
+                "artefacto": salida,
+                "artefacto_omitido_por_pii": salida_omitida,
+            })
+    except Exception as exc:
+        llamadas = getattr(exc, "llamadas_llm", [])
+        corrida = {
+            "tipo": "prueba-parcial",
+            "incidente": inc_id,
+            "archivo_entrada": ruta_log,
+            "entrada_log": log_texto,
+            "entrada_sha256": hashlib.sha256(log_texto.encode("utf-8")).hexdigest(),
+            "contexto": contexto,
+            "fuentes_contexto": fuentes_contexto,
+            "fuentes_contexto_bm25": fuentes_contexto,
+            "politica_severidad_obligatoria": politica_severidad_obligatoria,
+            "ok": False,
+            "error_general": str(exc),
+            "llamadas_llm": llamadas,
+            "etapas": [],
+        }
+    corridas.append(corrida)
+
+    prompts_usados = {}
+    for etapa in flujo_a_usar.etapas:
+        prompt_cargado = _prompts.cargar(etapa.prompt, etapa.version)
+        ruta_prompt = _prompts.CARPETA / f"{prompt_cargado.id}.v{prompt_cargado.version}.md"
+        prompts_usados[prompt_cargado.nombre] = hashlib.sha256(ruta_prompt.read_bytes()).hexdigest()
+    version_real = version_solicitada or max(
+        (_version_de(nombre) for nombre in prompts_usados), default=1
+    )
+    sufijo_utc = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    codigo_incidente = "inc01" if inc_id == "inc-01-pool" else "inc02"
+    nombre_archivo = _args.salida or f"a2_prueba_parcial_{codigo_incidente}_{sufijo_utc}"
+    ruta_salida = RAIZ / "bitacora" / f"{nombre_archivo}.md"
+    ruta_json = RAIZ / "bitacora" / f"{nombre_archivo}.json"
+    if ruta_salida.exists() or ruta_json.exists():
+        raise FileExistsError(
+            f"La evidencia {nombre_archivo} ya existe; elige otro valor para --salida"
+        )
+    proveedor_modelo = f"{config().llm_proveedor}/{config().llm_modelo}"
+    naturaleza = "SIMULADA (fake)" if config().llm_proveedor == "fake" else "proveedor configurado"
+    estado_pipeline = "VALIDO" if res is not None and res.ok else "FALLIDO_O_INCOMPLETO"
+
+    with ruta_salida.open("w", encoding="utf-8") as f:
+        f.write(f"# Prueba parcial A2 - {inc_id}\n\n")
+        f.write(f"**Proveedor/modelo:** {proveedor_modelo}  \n")
+        f.write(f"**Naturaleza:** {naturaleza}  \n")
+        f.write(f"**Tipo:** PRUEBA PARCIAL; una ejecucion de {inc_id}.  \n")
+        f.write(f"**Pipeline:** {estado_pipeline}  \n")
+        f.write("**Consistencia:** NO EJECUTADA.  \n")
+        f.write("**Alcance:** no es una matriz completa ni valida el flujo de extremo a extremo.  \n")
+        f.write("**Politica obligatoria de severidad:** rb-01, texto directo del corpus; separada de fragmentos BM25.  \n")
+        f.write(f"**Fragmentos BM25:** {len(fuentes_contexto)}; se enumeran por etapa en el JSON.  \n\n")
+        f.write("| Etapa | Prompt | Valida | Intentos | Errores |\n")
+        f.write("|---|---|---:|---:|---|\n")
+        for fila in matriz:
+            errores = "; ".join(fila["errores"][:1]) if fila["errores"] else "-"
+            f.write(
+                f"| {fila['etapa']} | {fila['prompt']} | {fila['valida']} "
+                f"| {fila['intentos']} | {errores[:120]} |\n"
+            )
+        if corrida.get("error_general"):
+            f.write(f"\nError general: {corrida['error_general'][:300]}\n")
+
+    with ruta_json.open("w", encoding="utf-8") as f:
+        json.dump({
+            "metadata": {
+                "equipo": "Equipo 5",
+                "variante": "v5-triage",
+                "fecha_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "proveedor": proveedor_modelo,
+                "naturaleza": naturaleza,
+                "tipo_ejecucion": "PRUEBA_PARCIAL",
+                "prueba_parcial": True,
+                "incidente": inc_id,
+                "repeticiones": 1,
+                "version_prompts": version_real,
+                "prompts_sha256": prompts_usados,
+                "politica_severidad_obligatoria": politica_severidad_obligatoria,
+                "estado_pipeline": estado_pipeline,
+                "consistencia": {
+                    "estado": "NO_EJECUTADA_PRUEBA_PARCIAL",
+                    "consistente": None,
+                },
+            },
+            "corridas": corridas,
+            "matriz": matriz,
+        }, f, ensure_ascii=False, indent=2)
+
+    print(f"Proveedor/modelo: {proveedor_modelo}")
+    print(f"Naturaleza: {naturaleza}")
+    print(f"Tipo: PRUEBA PARCIAL; una corrida de {inc_id}; consistencia omitida")
+    print(f"Pipeline valido: {res.ok if res is not None else False}")
+    print(f"Consistencia: NO EJECUTADA")
+    print(f"JSON: {ruta_json}")
+    print(f"Markdown: {ruta_salida}")
+    raise SystemExit(0)
+
 matriz = []
 corridas = []
 resultados_completos = {}
@@ -236,7 +347,7 @@ for inc_id, ruta_log in LOGS_ENTRADA.items():
         continue
 
     log_texto = log_path.read_text(encoding="utf-8")
-    contexto, fuentes_contexto = _contexto_relevante(log_texto)
+    contexto, fuentes_contexto, politica_severidad_obligatoria = preparar_contexto_a2(log_texto)
 
     if cuota_agotada:
         motivo = "Omitida: el proveedor agotó cuota en una corrida previa"
@@ -245,6 +356,8 @@ for inc_id, ruta_log in LOGS_ENTRADA.items():
             "entrada_log": log_texto,
             "entrada_sha256": hashlib.sha256(log_texto.encode("utf-8")).hexdigest(),
             "contexto": contexto, "fuentes_contexto": fuentes_contexto,
+            "fuentes_contexto_bm25": fuentes_contexto,
+            "politica_severidad_obligatoria": politica_severidad_obligatoria,
             "ok": False, "omitida": True, "error_general": motivo, "etapas": [],
             "llamadas_llm": [],
         })
@@ -263,13 +376,14 @@ for inc_id, ruta_log in LOGS_ENTRADA.items():
 
     # Ejecutar el flujo
     try:
+        flujo_corrida = flujo_con_fuentes_bm25(flujo_a_usar, fuentes_contexto)
         res, llamadas = _ejecutar_trazable(
-            flujo_a_usar, {"entrada": log_texto, "contexto": contexto}
+            flujo_corrida, {"entrada": log_texto, "contexto": contexto}
         )
         resultados_completos[inc_id] = res
         corrida_id = f"matriz-{inc_id}"
         corridas.append(_corrida_auditable(
-            res, llamadas, inc_id, ruta_log, log_texto, contexto, fuentes_contexto, "matriz"
+            res, llamadas, inc_id, ruta_log, log_texto, contexto, fuentes_contexto, politica_severidad_obligatoria, "matriz"
         ))
 
         estado = "✓ OK" if res.ok else "✗ FALLÓ"
@@ -300,6 +414,8 @@ for inc_id, ruta_log in LOGS_ENTRADA.items():
                 "tipo_corrida": "matriz",
                 "entrada": inc_id,
                 "fuentes_contexto": fuentes_contexto,
+            "fuentes_contexto_bm25": fuentes_contexto,
+            "politica_severidad_obligatoria": politica_severidad_obligatoria,
                 "etapa": e.nombre,
                 "prompt": e.prompt,
                 "version": version_etapa,
@@ -324,6 +440,8 @@ for inc_id, ruta_log in LOGS_ENTRADA.items():
             "archivo_entrada": ruta_log, "entrada_log": log_texto,
             "entrada_sha256": hashlib.sha256(log_texto.encode("utf-8")).hexdigest(),
             "contexto": contexto, "fuentes_contexto": fuentes_contexto,
+            "fuentes_contexto_bm25": fuentes_contexto,
+            "politica_severidad_obligatoria": politica_severidad_obligatoria,
             "ok": False, "error_general": str(ex),
             "llamadas_llm": getattr(ex, "llamadas_llm", []), "etapas": [],
         })
@@ -346,7 +464,7 @@ print(f"  Consistencia - Repitiendo inc-01-pool 3 veces")
 print(f"{'='*70}\n")
 
 log_consistencia = (RAIZ / LOGS_ENTRADA["inc-01-pool"]).read_text(encoding="utf-8")
-contexto_consistencia, fuentes_consistencia = _contexto_relevante(log_consistencia)
+contexto_consistencia, fuentes_consistencia, politica_consistencia = preparar_contexto_a2(log_consistencia)
 severidades_repetidas = []
 ejecuciones_validas = 0
 postmortems_validos = 0
@@ -366,18 +484,21 @@ for i in range(3):
             "entrada_sha256": hashlib.sha256(log_consistencia.encode("utf-8")).hexdigest(),
             "contexto": contexto_consistencia,
             "fuentes_contexto": fuentes_consistencia,
+            "fuentes_contexto_bm25": fuentes_consistencia,
+            "politica_severidad_obligatoria": politica_consistencia,
             "ok": False, "omitida": True, "error_general": motivo,
             "llamadas_llm": [], "etapas": [],
         })
         print(f"  Ejecución {i + 1}: {motivo}")
         continue
     try:
-        res_rep, llamadas_rep = _ejecutar_trazable(flujo_a_usar, {
+        flujo_consistencia = flujo_con_fuentes_bm25(flujo_a_usar, fuentes_consistencia)
+        res_rep, llamadas_rep = _ejecutar_trazable(flujo_consistencia, {
             "entrada": log_consistencia, "contexto": contexto_consistencia
         })
         corridas.append(_corrida_auditable(
             res_rep, llamadas_rep, "inc-01-pool", LOGS_ENTRADA["inc-01-pool"],
-            log_consistencia, contexto_consistencia, fuentes_consistencia,
+            log_consistencia, contexto_consistencia, fuentes_consistencia, politica_consistencia,
             f"consistencia-{i + 1}",
         ))
         for e in res_rep.etapas:
@@ -386,6 +507,8 @@ for i in range(3):
                 "tipo_corrida": "consistencia",
                 "entrada": "inc-01-pool",
                 "fuentes_contexto": fuentes_consistencia,
+            "fuentes_contexto_bm25": fuentes_consistencia,
+            "politica_severidad_obligatoria": politica_consistencia,
                 "etapa": e.nombre,
                 "prompt": e.prompt,
                 "version": _version_de(e.prompt),
@@ -440,6 +563,8 @@ for i in range(3):
             "entrada_sha256": hashlib.sha256(log_consistencia.encode("utf-8")).hexdigest(),
             "contexto": contexto_consistencia,
             "fuentes_contexto": fuentes_consistencia,
+            "fuentes_contexto_bm25": fuentes_consistencia,
+            "politica_severidad_obligatoria": politica_consistencia,
             "ok": False, "error_general": str(ex),
             "llamadas_llm": getattr(ex, "llamadas_llm", []), "etapas": [],
         })
@@ -462,12 +587,11 @@ print(f"  Postmortems válidos: {postmortems_validos}/3")
 print(f"  JSON de postmortem idénticos: {postmortem_consistente}")
 print(f"  Resultado: {'✓ Consistente' if consistente else '✗ Inconsistente'}")
 
+mensaje_consistencia = diagnostico_consistencia(
+    ejecuciones_validas, severidades_repetidas, postmortems_validos, postmortem_consistente
+)
 if not consistente:
-    if ejecuciones_validas < 3:
-        print(f"  → Al menos una ejecución falló. Revisar validación y esquemas.")
-    else:
-        print(f"  → Las 3 ejecuciones fueron válidas pero con severidades diferentes.")
-        print(f"  → Revisar el prompt para reducir variabilidad.")
+    print(f"  -> {mensaje_consistencia}")
 
 # Determinar la versión real usada
 if version_solicitada:
@@ -504,8 +628,10 @@ with open(ruta_salida, "w", encoding="utf-8") as f:
     f.write(f"**Proveedor:** {config().llm_proveedor}/{config().llm_modelo}  \n")
     f.write(f"**Versión de prompts:** v{version_real}  \n\n")
     f.write(f"**Estado de matriz de Pipeline (4 etapas):** {estado_matriz}  \n")
+    f.write("**Alcance de `Válida`:** indica que la salida pasó controles técnicos de formato, esquema y reglas programadas; no confirma por sí sola que la evidencia del log demuestre la clasificación. La revisión de evidencia se reporta por separado.  \n")
     f.write("**Límite:** ejecución directa de `Pipeline.ejecutar` con contexto BM25 local; no ejecuta `sistema()` ni prueba el RAG vectorial.  \n")
     f.write("**Recuperación de contexto:** BM25 local directo (sin inicializar el índice vectorial A1); líneas con datos personales omitidas.  \n")
+    f.write("**Politica obligatoria para severidad:** rb-01, texto directo del corpus y no hallazgo BM25.  \n")
     f.write("**SHA-256 de prompts:**\n")
     for nombre_prompt, digest in sorted(prompts_usados.items()):
         f.write(f"- `{nombre_prompt}`: `{digest}`\n")
@@ -532,7 +658,7 @@ with open(ruta_salida, "w", encoding="utf-8") as f:
         corridas_inc = [c for c in corridas_matriz if c["incidente"] == inc_id]
         if corridas_inc:
             fuentes = corridas_inc[0].get("fuentes_contexto", [])
-            f.write("**Contexto recuperado:** " + ", ".join(x["id"] for x in fuentes) + "\n\n")
+            f.write("**Fragmentos BM25 recuperados:** " + ", ".join(x["id"] for x in fuentes) + "\n\n")
         f.write("| Etapa | Prompt | Ver | Válida | Intentos | Artefacto | Errores |\n")
         f.write("|-------|--------|-----|--------|----------|-----------|----------|\n")
 
@@ -604,9 +730,7 @@ with open(ruta_salida, "w", encoding="utf-8") as f:
     f.write(f"**Resultado de consistencia:** {'CONSISTENTE' if consistente else 'INCONSISTENTE / PENDIENTE'}  \n\n")
 
     if not consistente:
-        f.write("⚠ **Advertencia:** La consistencia solo se declara si las tres corridas son válidas, "
-               "coincide la severidad y los JSON completos de postmortem son idénticos. "
-               "Consultar errores y artefactos por corrida en el JSON de auditoría.\n\n")
+        f.write(f"Advertencia: {mensaje_consistencia} Consulte artefactos por corrida en el JSON de auditoria.\n\n")
     f.write(f"**Matriz de Pipeline (4 etapas):** {estado_matriz}\n")
     f.write("**Integración de sistema/RAG vectorial:** PENDIENTE; no se declara LAB 3 completo.\n\n")
     if errores_por_repeticion:
@@ -638,6 +762,12 @@ with open(ruta_json, "w", encoding="utf-8") as f:
                 "reintentos_http_proveedor": config().reintentos,
             },
             "recuperacion_contexto": "BM25 local directo con _BM25, corpus v5-triage; PII omitida",
+            "politica_severidad_obligatoria": {
+                "id": "rb-01",
+                "archivo": politica_severidad_obligatoria["archivo"],
+                "sha256": politica_severidad_obligatoria["sha256"],
+                "origen": "texto obligatorio directo del corpus; independiente de BM25",
+            },
             "matriz_pipeline_4_etapas": {
                 "estado": estado_matriz,
                 "corridas_validas": sum(bool(c.get("ok")) for c in corridas_matriz),
