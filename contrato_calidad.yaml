@@ -1,8 +1,8 @@
 # Metas propuestas para el triage de incidentes de FinNorte; se fijan antes de medir.
-# No son resultados. El proveedor y el umbral RAG se completan/calibran con evidencia real.
+# Son metas fijadas antes de medir, no resultados. Se usó Claude Haiku 5.5 para A–D; el umbral RAG 0.35 se calibró solo con dos casos.
 equipo: "Equipo 5"
 variante: "v5-triage"
-proveedor: "PENDIENTE: Gemini devolvió HTTP 503; indicar modelo usado al medir"
+proveedor: "Anthropic Claude Haiku 5.5"
 fecha: "2026-11-05"
 metas:
   exactitud_min: 0.85            # el nivel, acciones y fuentes deben acertar en al menos 85 % de las ejecuciones

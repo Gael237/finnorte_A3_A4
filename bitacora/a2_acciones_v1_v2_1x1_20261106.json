@@ -1,0 +1,323 @@
+{
+  "estado": "ambas_versiones_guardadas",
+  "fecha_preflight_utc": "2026-11-06T21:14:53.996759+00:00",
+  "archivo": "bitacora/a2_acciones_v1_v2_1x1_20261106.json",
+  "entrada_origen": {
+    "archivo": "bitacora/a2_matriz_haiku55_revalidada_20261106.json",
+    "corrida": "matriz-inc-01-pool",
+    "log": "datos/v5-triage/logs/inc-01-pool.log",
+    "log_sha256": "fecf6b1e755531e5bd018d96c290c2543dd9743a06da3da5b2c01328aaf693fd"
+  },
+  "entrada_comun": {
+    "senales": {
+      "eventos": [
+        {
+          "hora": "13:02",
+          "descripcion": "Despliegue de pagos-api versión 4.19 con estrategia canary y pct=100."
+        },
+        {
+          "hora": "13:18",
+          "descripcion": "WARN: uso del pool de base de datos de pagos-api en 92%."
+        },
+        {
+          "hora": "13:21",
+          "descripcion": "ERROR: sqlalchemy.exc.TimeoutError, QueuePool limit de tamaño 20 con overflow 10 alcanzado; timeout de conexión."
+        },
+        {
+          "hora": "13:21",
+          "descripcion": "ERROR: POST /v1/transferencias responde 500 (trace_id=a81f)."
+        },
+        {
+          "hora": "13:21",
+          "descripcion": "ERROR: POST /v1/transferencias responde 500 (trace_id=a822)."
+        },
+        {
+          "hora": "13:22",
+          "descripcion": "ALERT: transferencias.errores_5xx=27%, por encima del umbral de 5%."
+        }
+      ],
+      "indicadores": {
+        "transferencias_caidas_todos": null,
+        "acceso_caido_todos": null,
+        "exposicion_datos": null,
+        "falla_componente_critico": null,
+        "alternativa_disponible": null,
+        "falla_parcial_sin_impacto_dinero": false,
+        "problema_menor": false,
+        "p95_transferencias_s": null,
+        "duracion_p95_sobre_3s_min": null,
+        "errores_5xx_pct": 27
+      },
+      "faltantes": [
+        "Alcance de la caída de transferencias: el log no indica si afecta a todas las transferencias o a todos los usuarios.",
+        "Estado del acceso general (acceso_caido_todos): no hay evidencia en el log.",
+        "Evidencia de exposición de datos: el log no la menciona.",
+        "Confirmación de falla de componente crítico y de existencia de alternativa: el log no la especifica.",
+        "Latencia p95 de transferencias en segundos: el log no la registra.",
+        "Duración en minutos de la latencia p95 por encima de 3 s: no disponible.",
+        "Duración del periodo con errores 5xx: el log solo muestra una alerta puntual a las 13:22.",
+        "Resultado de la reversa o mitigación posterior al incidente: no aparece en el log."
+      ],
+      "fuentes": [
+        "rb-01#0"
+      ]
+    },
+    "severidad": {
+      "nivel": "SEV2",
+      "criterio_rb01": "SEV2: degradación importante (latencia p95 de transferencias arriba de 3 s por más de 10 minutos, o más de 5 % de errores 5xx) o falla de un componente crítico con alternativa. Respuesta en 30 minutos.",
+      "justificacion": "Las señales demuestran más de 5 % de errores 5xx: el indicador errores_5xx_pct es 27 y la alerta de las 13:22 reporta transferencias.errores_5xx=27%, con respuestas 500 en POST /v1/transferencias a las 13:21 tras un QueuePool agotado. No se demuestra SEV1: transferencias_caidas_todos es null, acceso_caido_todos es null y exposicion_datos es null, así que no hay evidencia de caída total de transferencias ni de exposición de datos. Tampoco se puede afirmar un nivel superior por falla de componente crítico, porque falla_componente_critico y alternativa_disponible son null. Límites: el log solo muestra una alerta puntual a las 13:22 y no indica cuánto duró el periodo con errores 5xx; la latencia p95 no está registrada, así que no se puede evaluar el criterio de p95 mayor a 3 s por más de 10 minutos; y no hay evidencia del resultado de la reversa o mitigación.",
+      "fuente": "rb-01"
+    },
+    "contexto": "POLITICA OBLIGATORIA PARA LA ETAPA DE SEVERIDAD; texto directo del corpus, independiente de la recuperacion BM25.\n[politica-obligatoria:rb-01]\nSEV1: transferencias o acceso caídos para todos, o exposición de datos. Respuesta en 15 minutos; actualización cada 30.\nSEV2: degradación importante (latencia p95 de transferencias arriba de 3 s por más de 10 minutos, o más de 5 % de errores 5xx) o falla de un componente crítico con alternativa. Respuesta en 30 minutos.\nSEV3: falla parcial sin impacto en dinero (notificaciones retrasadas, reportes). Respuesta en 4 horas hábiles.\nSEV4: problema menor.\n\nAnte la duda entre dos severidades, se elige la mayor y se reclasifica después.\n\nFRAGMENTOS RECUPERADOS POR BM25 (solo estos IDs son fuentes de recuperacion):\n[doc:pm-01#0] Postmortem 2026-03-14: conexiones agotadas tras despliegue\nResumen: de 13:05 a 13:52 el 38 % de las transferencias falló con error 500. Severidad SEV1.\n\nCausa raíz: la versión 4.12 de pagos-api abría una conexión nueva por solicitud en el endpoint de comisiones y no la cerraba (fuga de conexiones). El pool se agotó a los 20 minutos del despliegue.\n\nDetección: alerta de errores 5xx a las 13:09. Se revirtió a las 13:40; la recuperación terminó a las 13:52.\n\nQué falló: la prueba de carga no se corrió antes del despliegue. Acciones: prueba de carga obligatoria en el pipeline para cambios en pagos-api (responsable: plataforma, fecha: 2026-04-15).\n\n[doc:rb-03#0] Runbook: conexiones a base de datos agotadas\nSíntoma en logs: \"QueuePool limit of size 20 overflow 10 reached\" o \"remaining connection slots are reserved\".\n\nCausas comunes: consultas lentas que retienen conexiones, una fuga de conexiones tras un despliegue o un pico de tráfico.\n\nAcciones: identificar consultas de más de 5 s en el monitor de la base de datos y cancelarlas si son de reportes; si coincide con un despliegue, revertir (rb-08). No aumentar el tamaño del pool sin aprobación del DBA: puede saturar la base de datos.\n\nSeveridad típica: SEV2; SEV1 si las transferencias fallan.\n\n[doc:rb-02#0] Runbook: latencia alta en API de transferencias\nSíntoma: alerta \"transferencias p95 > 800 ms\" o quejas de lentitud.\n\nRevisar en orden:\n1. ¿Hubo despliegue en los últimos 60 minutos? Si sí, considerar reversa inmediata (ver rb-08).\n2. Latencia del proveedor SPEI (panel spei-gateway): si sube igual, ver rb-05.\n3. Conexiones de base de datos (pool en uso > 90 %): ver rb-03.\n4. CPU y memoria de los pods de pagos-api: si están saturados, escalar réplicas de 6 a 12.\n\nNo reiniciar todos los pods a la vez: se reinician de uno en uno.\n\n[doc:rb-01#0] Catálogo de severidades\nSEV1: transferencias o acceso caídos para todos, o exposición de datos. Respuesta en 15 minutos; actualización cada 30.\nSEV2: degradación importante (latencia p95 de transferencias arriba de 3 s por más de 10 minutos, o más de 5 % de errores 5xx) o falla de un componente crítico con alternativa. Respuesta en 30 minutos.\nSEV3: falla parcial sin impacto en dinero (notificaciones retrasadas, reportes). Respuesta en 4 horas hábiles.\nSEV4: problema menor.\n\nAnte la duda entre dos severidades, se elige la mayor y se reclasifica después.\n\n[doc:rb-08#0] Runbook: reversa de un despliegue\nCriterio: si los errores 5xx o la latencia empeoran en los 60 minutos posteriores a un despliegue, la primera acción es revertir; se investiga después.\n\nCómo: en la herramienta de despliegue, seleccionar la versión anterior y desplegar con estrategia inmediata. Verificar que los errores bajen en 10 minutos.\n\nLas migraciones de base de datos deben tener script de reversa; si no lo tienen, escalar al DBA antes de revertir.\n\n[doc:rb-04#0] Runbook: certificado TLS vencido o por vencer\nSíntoma en logs: \"certificate has expired\", \"CERTIFICATE_VERIFY_FAILED\" o \"SSL: CERTIFICATE_VERIFY_FAILED\" al conectar con un servicio interno o un proveedor.\n\nAcciones: identificar el dominio en el error; si el certificado es nuestro, renovarlo con el gestor de certificados y reiniciar el balanceador; si es del proveedor, escalar a su soporte y activar la ruta alterna si existe.\n\nPrevención: alerta 30 días antes del vencimiento. Ver postmortem pm-02.\n\n[doc:rb-06#0] Runbook: cola de notificaciones atascada\nSíntoma: la métrica notificaciones.cola.pendientes crece sin bajar; logs con \"consumer lag\" o \"message processing failed, will retry\".\n\nAcciones: revisar si un mensaje \"venenoso\" falla repetidamente (mismo message_id en los errores) y moverlo a la cola de mensajes muertos; escalar consumidores de 2 a 6.\n\nSeveridad típica: SEV3 (no afecta dinero)."
+  },
+  "prompts": {
+    "1": {
+      "id": "tri_acciones.v1",
+      "salida_json": true,
+      "esquema_presente": true
+    },
+    "2": {
+      "id": "tri_acciones.v2",
+      "salida_json": true,
+      "esquema_presente": true
+    }
+  },
+  "configuracion_solicitada": {
+    "proveedor": "anthropic",
+    "modelo": "claude-haiku-5-5",
+    "llamadas_por_version": 1,
+    "reintentos": 0
+  },
+  "rechazo_real_preexistente": {
+    "archivo": "bitacora/trazas.jsonl",
+    "sesion": "1e598bde",
+    "fecha": "2026-11-06T00:06:51",
+    "prompt": "tri_acciones.v1",
+    "flujo": "v5-triage-v1",
+    "etapa_ok": false,
+    "errores": [
+      "acciones[0]: acción destructiva prohibida"
+    ],
+    "proveedor": "anthropic",
+    "modelo": "claude-haiku-5-5",
+    "salida_completa_guardada": false,
+    "usable_como_comparacion": false,
+    "motivo_no_uso": "La traza acredita llamada y rechazo de la regla, pero no conserva texto/JSON de la acci?n ni se?ales/contexto emparejados."
+  },
+  "nota_comparabilidad": "tri_acciones.v1 no tiene variable contexto en su archivo; el mismo contexto guardado se agregar? solo en memoria al render v1. No se modifican prompts.",
+  "llamadas": [
+    {
+      "version": 1,
+      "prompt": "tri_acciones.v1",
+      "fecha_inicio_utc": "2026-11-06T21:16:14.386160+00:00",
+      "fecha_fin_utc": "2026-11-06T21:16:21.419586+00:00",
+      "prompt_sha256": "192cd6d2b9529ce351e1c6c169f4bf7fceb2fc58c4955056bc0a94696107462f",
+      "valida": false,
+      "errores_validador": [
+        "acciones[4]: rb-02 no está sustentado por las señales disponibles",
+        "acciones[5]: rb-05 no está sustentado por las señales disponibles"
+      ],
+      "intentos_pipeline": 1,
+      "salida_pipeline_completa": {
+        "acciones": [
+          {
+            "descripcion": "Revertir el despliegue de pagos-api 4.19 a la versión anterior estable usando estrategia inmediata, porque los errores 5xx y el agotamiento del pool empezaron dentro de los 60 minutos posteriores al despliegue de las 13:02. Verificar que los errores 5xx bajen dentro de los 10 minutos siguientes.",
+            "runbook": "rb-08"
+          },
+          {
+            "descripcion": "Antes de revertir, confirmar si la migración de base de datos asociada a 4.19 tiene script de reversa. Si no lo tiene, escalar al DBA antes de ejecutar la reversa.",
+            "runbook": "rb-08"
+          },
+          {
+            "descripcion": "Identificar en el monitor de la base de datos las consultas de más de 5 s que retienen conexiones del pool de pagos-api, cancelar las que correspondan a reportes y registrar las demás para análisis.",
+            "runbook": "rb-03"
+          },
+          {
+            "descripcion": "No aumentar el tamaño del QueuePool (20 con overflow 10) sin aprobación del DBA, para evitar saturar la base de datos.",
+            "runbook": "rb-03"
+          },
+          {
+            "descripcion": "Monitorear la latencia p95 de transferencias y el uso del pool. Si la latencia sigue alta tras la reversa, revisar el proveedor SPEI y el uso de CPU y memoria de los pods de pagos-api, reiniciando los pods de uno en uno y no todos a la vez.",
+            "runbook": "rb-02"
+          },
+          {
+            "descripcion": "Si la latencia persiste después de la reversa y se confirma degradación del proveedor SPEI, revisar el panel spei-gateway y activar la ruta de contingencia documentada.",
+            "runbook": "rb-05"
+          }
+        ],
+        "faltantes": "Versión anterior exacta a la que se debe revertir no confirmada en el log. Alcance de la caída (todas las transferencias o un subconjunto) y estado de acceso general no documentados. Latencia p95 de transferencias y su duración no registradas. Duración del periodo con errores 5xx más allá de la alerta puntual de las 13:22. No hay evidencia de si existe script de reversa para las migraciones de 4.19. No se sabe si el despliegue canary a pct=100 se validó antes de escalar. Estado de CPU y memoria de los pods de pagos-api. Estado del proveedor SPEI. Resultado de la reversa o mitigación aún no disponible."
+      },
+      "respuesta_cruda_completa": "{\"acciones\":[{\"descripcion\":\"Revertir el despliegue de pagos-api 4.19 a la versión anterior estable usando estrategia inmediata, porque los errores 5xx y el agotamiento del pool empezaron dentro de los 60 minutos posteriores al despliegue de las 13:02. Verificar que los errores 5xx bajen dentro de los 10 minutos siguientes.\",\"runbook\":\"rb-08\"},{\"descripcion\":\"Antes de revertir, confirmar si la migración de base de datos asociada a 4.19 tiene script de reversa. Si no lo tiene, escalar al DBA antes de ejecutar la reversa.\",\"runbook\":\"rb-08\"},{\"descripcion\":\"Identificar en el monitor de la base de datos las consultas de más de 5 s que retienen conexiones del pool de pagos-api, cancelar las que correspondan a reportes y registrar las demás para análisis.\",\"runbook\":\"rb-03\"},{\"descripcion\":\"No aumentar el tamaño del QueuePool (20 con overflow 10) sin aprobación del DBA, para evitar saturar la base de datos.\",\"runbook\":\"rb-03\"},{\"descripcion\":\"Monitorear la latencia p95 de transferencias y el uso del pool. Si la latencia sigue alta tras la reversa, revisar el proveedor SPEI y el uso de CPU y memoria de los pods de pagos-api, reiniciando los pods de uno en uno y no todos a la vez.\",\"runbook\":\"rb-02\"},{\"descripcion\":\"Si la latencia persiste después de la reversa y se confirma degradación del proveedor SPEI, revisar el panel spei-gateway y activar la ruta de contingencia documentada.\",\"runbook\":\"rb-05\"}],\"faltantes\":\"Versión anterior exacta a la que se debe revertir no confirmada en el log. Alcance de la caída (todas las transferencias o un subconjunto) y estado de acceso general no documentados. Latencia p95 de transferencias y su duración no registradas. Duración del periodo con errores 5xx más allá de la alerta puntual de las 13:22. No hay evidencia de si existe script de reversa para las migraciones de 4.19. No se sabe si el despliegue canary a pct=100 se validó antes de escalar. Estado de CPU y memoria de los pods de pagos-api. Estado del proveedor SPEI. Resultado de la reversa o mitigación aún no disponible.\"}",
+      "json_parseado_por_adaptador": {
+        "acciones": [
+          {
+            "descripcion": "Revertir el despliegue de pagos-api 4.19 a la versión anterior estable usando estrategia inmediata, porque los errores 5xx y el agotamiento del pool empezaron dentro de los 60 minutos posteriores al despliegue de las 13:02. Verificar que los errores 5xx bajen dentro de los 10 minutos siguientes.",
+            "runbook": "rb-08"
+          },
+          {
+            "descripcion": "Antes de revertir, confirmar si la migración de base de datos asociada a 4.19 tiene script de reversa. Si no lo tiene, escalar al DBA antes de ejecutar la reversa.",
+            "runbook": "rb-08"
+          },
+          {
+            "descripcion": "Identificar en el monitor de la base de datos las consultas de más de 5 s que retienen conexiones del pool de pagos-api, cancelar las que correspondan a reportes y registrar las demás para análisis.",
+            "runbook": "rb-03"
+          },
+          {
+            "descripcion": "No aumentar el tamaño del QueuePool (20 con overflow 10) sin aprobación del DBA, para evitar saturar la base de datos.",
+            "runbook": "rb-03"
+          },
+          {
+            "descripcion": "Monitorear la latencia p95 de transferencias y el uso del pool. Si la latencia sigue alta tras la reversa, revisar el proveedor SPEI y el uso de CPU y memoria de los pods de pagos-api, reiniciando los pods de uno en uno y no todos a la vez.",
+            "runbook": "rb-02"
+          },
+          {
+            "descripcion": "Si la latencia persiste después de la reversa y se confirma degradación del proveedor SPEI, revisar el panel spei-gateway y activar la ruta de contingencia documentada.",
+            "runbook": "rb-05"
+          }
+        ],
+        "faltantes": "Versión anterior exacta a la que se debe revertir no confirmada en el log. Alcance de la caída (todas las transferencias o un subconjunto) y estado de acceso general no documentados. Latencia p95 de transferencias y su duración no registradas. Duración del periodo con errores 5xx más allá de la alerta puntual de las 13:22. No hay evidencia de si existe script de reversa para las migraciones de 4.19. No se sabe si el despliegue canary a pct=100 se validó antes de escalar. Estado de CPU y memoria de los pods de pagos-api. Estado del proveedor SPEI. Resultado de la reversa o mitigación aún no disponible."
+      },
+      "respuesta_proveedor": {
+        "proveedor": "anthropic",
+        "modelo": "claude-haiku-5-5",
+        "tokens_entrada": 3667,
+        "tokens_salida": 1425,
+        "costo_usd": 0.0010792,
+        "latencia_ms_llm": 7030.5,
+        "intentos_http": 1,
+        "extra": {
+          "stop_reason": "end_turn",
+          "max_tokens": 4096,
+          "limite_tokens_alcanzado": false
+        }
+      },
+      "peticion": {
+        "body_keys": [
+          "max_tokens",
+          "messages",
+          "model",
+          "system"
+        ],
+        "temperature_parameter_present": false
+      },
+      "latencia_etapa_ms": 7032.5,
+      "costo_etapa_usd": 0.0010792,
+      "faltantes_normalizados_solo_para_comparacion": [
+        "Versión anterior exacta a la que se debe revertir no confirmada en el log. Alcance de la caída (todas las transferencias o un subconjunto) y estado de acceso general no documentados. Latencia p95 de transferencias y su duración no registradas. Duración del periodo con errores 5xx más allá de la alerta puntual de las 13:22. No hay evidencia de si existe script de reversa para las migraciones de 4.19. No se sabe si el despliegue canary a pct=100 se validó antes de escalar. Estado de CPU y memoria de los pods de pagos-api. Estado del proveedor SPEI. Resultado de la reversa o mitigación aún no disponible."
+      ]
+    },
+    {
+      "version": 2,
+      "prompt": "tri_acciones.v2",
+      "fecha_inicio_utc": "2026-11-06T21:16:21.436108+00:00",
+      "fecha_fin_utc": "2026-11-06T21:16:30.387201+00:00",
+      "prompt_sha256": "5f8bd570c29d8b3d7e071267e848edd7095abc0a58817e56ce6952d10dbe1923",
+      "valida": true,
+      "errores_validador": [],
+      "intentos_pipeline": 1,
+      "salida_pipeline_completa": {
+        "acciones": [
+          {
+            "descripcion": "Revisar en la herramienta de despliegue que pagos-api 4.19 (desplegada a las 13:02 con canary pct=100) sea la versión activa y, si la línea base previa al despliegue muestra menos errores 5xx que el 27 % observado a las 13:22, seleccionar la versión anterior y desplegarla con estrategia inmediata. Verificar a los 10 minutos que los errores 5xx de POST /v1/transferencias bajen. Antes de revertir, confirmar con el DBA si la migración asociada tiene script de reversa; si no lo tiene, escalar al DBA antes de revertir.",
+            "runbook": "rb-08"
+          },
+          {
+            "descripcion": "Identificar en el monitor de la base de datos de pagos-api las consultas de más de 5 s que retienen conexiones, dado que el pool de 20 con overflow 10 se agotó a las 13:21 (QueuePool limit alcanzado, TimeoutError). Solo registrar su origen; no cancelar ninguna consulta salvo que sea de reportes, y no aumentar el pool sin aprobación del DBA.",
+            "runbook": "rb-03"
+          }
+        ],
+        "faltantes": [
+          "Línea base de errores 5xx y latencia de transferencias antes de las 13:02 para confirmar que empeoraron tras el despliegue 4.19.",
+          "Confirmación de si la migración de base de datos del despliegue 4.19 tiene script de reversa.",
+          "Latencia p95 de transferencias en segundos y su duración por encima de 3 s en minutos.",
+          "Duración del periodo con errores 5xx; el log solo muestra la alerta puntual de las 13:22.",
+          "Estado actual del pool de conexiones de pagos-api y del uso de CPU y memoria de los pods después de las 13:22.",
+          "Lista de consultas de más de 5 s y su tipo (reportes u otras) en el monitor de la base de datos.",
+          "Confirmación de si ya se inició o completó alguna reversa o mitigación posterior al incidente.",
+          "Confirmación de si la caída afecta a todas las transferencias o a todos los usuarios, y estado de acceso general y de exposición de datos."
+        ]
+      },
+      "respuesta_cruda_completa": "{\n  \"acciones\": [\n    {\n      \"descripcion\": \"Revisar en la herramienta de despliegue que pagos-api 4.19 (desplegada a las 13:02 con canary pct=100) sea la versión activa y, si la línea base previa al despliegue muestra menos errores 5xx que el 27 % observado a las 13:22, seleccionar la versión anterior y desplegarla con estrategia inmediata. Verificar a los 10 minutos que los errores 5xx de POST /v1/transferencias bajen. Antes de revertir, confirmar con el DBA si la migración asociada tiene script de reversa; si no lo tiene, escalar al DBA antes de revertir.\",\n      \"runbook\": \"rb-08\"\n    },\n    {\n      \"descripcion\": \"Identificar en el monitor de la base de datos de pagos-api las consultas de más de 5 s que retienen conexiones, dado que el pool de 20 con overflow 10 se agotó a las 13:21 (QueuePool limit alcanzado, TimeoutError). Solo registrar su origen; no cancelar ninguna consulta salvo que sea de reportes, y no aumentar el pool sin aprobación del DBA.\",\n      \"runbook\": \"rb-03\"\n    }\n  ],\n  \"faltantes\": [\n    \"Línea base de errores 5xx y latencia de transferencias antes de las 13:02 para confirmar que empeoraron tras el despliegue 4.19.\",\n    \"Confirmación de si la migración de base de datos del despliegue 4.19 tiene script de reversa.\",\n    \"Latencia p95 de transferencias en segundos y su duración por encima de 3 s en minutos.\",\n    \"Duración del periodo con errores 5xx; el log solo muestra la alerta puntual de las 13:22.\",\n    \"Estado actual del pool de conexiones de pagos-api y del uso de CPU y memoria de los pods después de las 13:22.\",\n    \"Lista de consultas de más de 5 s y su tipo (reportes u otras) en el monitor de la base de datos.\",\n    \"Confirmación de si ya se inició o completó alguna reversa o mitigación posterior al incidente.\",\n    \"Confirmación de si la caída afecta a todas las transferencias o a todos los usuarios, y estado de acceso general y de exposición de datos.\"\n  ]\n}",
+      "json_parseado_por_adaptador": {
+        "acciones": [
+          {
+            "descripcion": "Revisar en la herramienta de despliegue que pagos-api 4.19 (desplegada a las 13:02 con canary pct=100) sea la versión activa y, si la línea base previa al despliegue muestra menos errores 5xx que el 27 % observado a las 13:22, seleccionar la versión anterior y desplegarla con estrategia inmediata. Verificar a los 10 minutos que los errores 5xx de POST /v1/transferencias bajen. Antes de revertir, confirmar con el DBA si la migración asociada tiene script de reversa; si no lo tiene, escalar al DBA antes de revertir.",
+            "runbook": "rb-08"
+          },
+          {
+            "descripcion": "Identificar en el monitor de la base de datos de pagos-api las consultas de más de 5 s que retienen conexiones, dado que el pool de 20 con overflow 10 se agotó a las 13:21 (QueuePool limit alcanzado, TimeoutError). Solo registrar su origen; no cancelar ninguna consulta salvo que sea de reportes, y no aumentar el pool sin aprobación del DBA.",
+            "runbook": "rb-03"
+          }
+        ],
+        "faltantes": [
+          "Línea base de errores 5xx y latencia de transferencias antes de las 13:02 para confirmar que empeoraron tras el despliegue 4.19.",
+          "Confirmación de si la migración de base de datos del despliegue 4.19 tiene script de reversa.",
+          "Latencia p95 de transferencias en segundos y su duración por encima de 3 s en minutos.",
+          "Duración del periodo con errores 5xx; el log solo muestra la alerta puntual de las 13:22.",
+          "Estado actual del pool de conexiones de pagos-api y del uso de CPU y memoria de los pods después de las 13:22.",
+          "Lista de consultas de más de 5 s y su tipo (reportes u otras) en el monitor de la base de datos.",
+          "Confirmación de si ya se inició o completó alguna reversa o mitigación posterior al incidente.",
+          "Confirmación de si la caída afecta a todas las transferencias o a todos los usuarios, y estado de acceso general y de exposición de datos."
+        ]
+      },
+      "respuesta_proveedor": {
+        "proveedor": "anthropic",
+        "modelo": "claude-haiku-5-5",
+        "tokens_entrada": 4518,
+        "tokens_salida": 1805,
+        "costo_usd": 0.0013543,
+        "latencia_ms_llm": 8950.3,
+        "intentos_http": 1,
+        "extra": {
+          "stop_reason": "end_turn",
+          "max_tokens": 4096,
+          "limite_tokens_alcanzado": false
+        }
+      },
+      "peticion": {
+        "body_keys": [
+          "max_tokens",
+          "messages",
+          "model",
+          "system"
+        ],
+        "temperature_parameter_present": false
+      },
+      "latencia_etapa_ms": 8951.3,
+      "costo_etapa_usd": 0.0013543,
+      "faltantes_normalizados_solo_para_comparacion": [
+        "Línea base de errores 5xx y latencia de transferencias antes de las 13:02 para confirmar que empeoraron tras el despliegue 4.19.",
+        "Confirmación de si la migración de base de datos del despliegue 4.19 tiene script de reversa.",
+        "Latencia p95 de transferencias en segundos y su duración por encima de 3 s en minutos.",
+        "Duración del periodo con errores 5xx; el log solo muestra la alerta puntual de las 13:22.",
+        "Estado actual del pool de conexiones de pagos-api y del uso de CPU y memoria de los pods después de las 13:22.",
+        "Lista de consultas de más de 5 s y su tipo (reportes u otras) en el monitor de la base de datos.",
+        "Confirmación de si ya se inició o completó alguna reversa o mitigación posterior al incidente.",
+        "Confirmación de si la caída afecta a todas las transferencias o a todos los usuarios, y estado de acceso general y de exposición de datos."
+      ]
+    }
+  ],
+  "revision_offline": {
+    "fecha_utc": "2026-11-06T21:18:29.949757+00:00",
+    "muestra": "una llamada por versi?n; comparaci?n descriptiva, no prueba de mejora general",
+    "mismas_entradas": true,
+    "salida_v1": {
+      "validador": "rechazada",
+      "errores": [
+        "acciones[4]: rb-02 no está sustentado por las señales disponibles",
+        "acciones[5]: rb-05 no está sustentado por las señales disponibles"
+      ],
+      "acciones": 6,
+      "lectura": "rb-03 tiene respaldo parcial en QueuePool 20+10 agotado y pool al 92%; la consulta >5 s no aparece en el log y la acci?n la plantea como b?squeda. rb-02 y rb-05 carecen de s?ntomas observados, como reflejan los errores del validador. rb-08 propone revertir por secuencia temporal y 27% posterior, sin baseline previo comparable; la verificaci?n del script de migraci?n es una condici?n distinta y no demuestra que el rollback est? indicado."
+    },
+    "salida_v2": {
+      "validador": "aceptada",
+      "errores": [],
+      "acciones": 2,
+      "lectura": "rb-03 queda respaldado por agotamiento del pool, aunque la lista de consultas >5 s se debe obtener en el monitor. La acci?n rb-08 condiciona revertir a comprobar que el baseline anterior tenga menos 5xx que 27% y registra ese baseline como faltante; no recomienda ejecutar la reversa sin esa comprobaci?n en su texto."
+    },
+    "limite_del_validador": "El validador acepta rb-08 por se?ales generales del despliegue; no compara 5xx/latencia antes y despu?s ni el log original. El pase de v2 no demuestra por s? solo que su condici?n est? sem?nticamente protegida.",
+    "comparabilidad_faltantes": "faltantes v1 es string y v2 es lista; se conservan ambas salidas nativas y se a?adi? faltantes_normalizados_solo_para_comparacion.",
+    "conclusion": "No concluir mejora: n=1 por versi?n, salidas y validadores distintos y sin repeticiones controladas. La ?nica observaci?n es que en esta entrada v1 tuvo dos errores de sustento (rb-02/rb-05) y formul? una reversa sin baseline; v2 pas? y expres? el baseline como condici?n/faltante."
+  }
+}

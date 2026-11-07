@@ -9,7 +9,7 @@
 | Variante                        | v5-triage                                                   |
 | Repositorio                     | https://github.com/AlanGaelQC/finnorte-ia-v5-triage-equipo5 |
 | Canal de comunicación           | whatsApp                                                    |
-| Horario fijo de trabajo semanal |                                                             |
+| Horario fijo de trabajo semanal | Sin horario fijo documentado                               |
 
 ## Integrantes y roles
 Los roles **rotan en cada entrega**; todos programan.
@@ -41,12 +41,26 @@ Cada integrante es dueño de **una** etapa: su prompt v1 y esquema, su validaci�
 | Pieza | Opciones (de quién) | Elegida | Evidencia que la justifica |
 |---|---|---|---|
 | Buscador (A1) | Índice vectorial actual y BM25 del repositorio | Índice vectorial integrado en `src/finnorte/retrieval.py` | En 10 preguntas nuevas del corpus v5-triage con embeddings Gemini, vector: acierto@1 10/10 y @3 10/10; BM25: @1 7/10 y @3 8/10 (`bitacora/a1_comparacion.json`). Esta comparación no sustituye las métricas individuales de los demás integrantes. |
-| Flujo (A2) | Cuatro etapas v1 y flujo integrado | `FLUJO_V1` y `FLUJO` en `src/finnorte/variante.py` | 64 passed, 9 skipped en `main` (ejecución local de Alan, 2026-11-05). Faltan matriz de tres incidentes y tres repeticiones reales. |
-| Prompts | v1 y v2 por etapa | `FLUJO_V1` usa v1 y `FLUJO` usa v2 en las cuatro etapas | Las versiones y el formato de v2 se verificaron localmente; la mejora de calidad frente a v1 está pendiente de medir con proveedor real. |
+| Flujo (A2) | Cuatro etapas v1 y flujo integrado | `FLUJO_V1` y `FLUJO` en `src/finnorte/variante.py` | 64 passed, 9 skipped en `main` (ejecución local de Alan, 2026-11-05). La matriz real A2 de 2026-11-06 documenta tres incidentes: 2/3 flujos válidos. En tres repeticiones de inc-01, 1/3 flujos completos válidos; la etapa acciones pasó 3/3 como validación técnica (`bitacora/a2_matriz_haiku55_revalidada_20261106.json`). |
+| Prompts | v1 y v2 por etapa | `FLUJO_V1` usa v1 y `FLUJO` usa v2 en las cuatro etapas | A–D reales: B−A en exactitud +0.00; no se demostró mejora agregada atribuible a v2. La comparación aislada de acciones 1×1 (`bitacora/a2_acciones_v1_v2_1x1_20261106.json`) no prueba mejora general. |
 
 ## Registro de decisiones importantes
 | Fecha | Decisión | Alternativas descartadas | Por qué |
 |---|---|---|---|
 | 2026-11-05 | Verificar 20 casos y A–D con `fake + hash`, `--rep 1` | Reportar esos porcentajes como calidad del modelo | El script corrió 12 normales, 4 fuera y 4 adversariales sin avisos de error; los valores obtenidos con fake no miden calidad ni consistencia de tres repeticiones. |
 | 2026-11-05 | Mantener pendiente la medición con Gemini | Afirmar que la evaluación real pasó | `gemini-3.6-flash` y `gemini-3.5-flash-lite` devolvieron HTTP 503 antes de producir una salida. |
-| 2026-11-05 | Usar el buscador vectorial actual frente a BM25 en el conjunto nuevo de 10 preguntas | BM25 para este conjunto | Vector 10/10 @3 y BM25 8/10 @3, con `EMB_PROVIDER=gemini`; falta comparar las propuestas individuales de A1 en condiciones equivalentes. |
+| 2026-11-05 | Usar el buscador vectorial actual frente a BM25 en el conjunto nuevo de 10 preguntas | BM25 para este conjunto | Con Gemini, vector 10/10 @3 y BM25 8/10 @3; con embeddings locales, vector 10/10 @3 y BM25 8/10 @3. Ambos usan 10 preguntas; esta comparación no demuestra un beneficio A–D. |
+
+## Mediciones adicionales de A1 y calibración del umbral
+
+- En las 10 preguntas existentes, con embeddings Gemini: vector obtuvo acierto@1 de 10/10 y acierto@3 de 10/10; BM25 obtuvo acierto@1 de 7/10 y acierto@3 de 8/10. Evidencia versionada: `bitacora/a1_comparacion.json`.
+- Calibración RAG limitada a dos casos: `t01=0.5651` y `t09=0.3339`, con umbral `0.35`. Esta muestra pequeña no constituye una calibración general.
+- Actualización 2026-11-06: `bitacora/av1_A.json` a `av1_D.json` son los reportes reales de A–D, con 20 casos y 3 repeticiones (60 ejecuciones por configuración); las trazas de la corrida local registraron Anthropic Claude Haiku 5.5. La corrida `fake` queda excluida de estas mediciones. Los JSON A–D no guardan proveedor/modelo de embeddings; la configuración local declarada para esa corrida no puede verificarse solo desde los reportes.
+
+## Evaluación real del Avance 1 (2026-11-06)
+
+- Configuración efectiva de la corrida: Anthropic Claude Haiku 5.5 para respuestas y embeddings locales `paraphrase-multilingual-MiniLM-L12-v2` según entorno de ejecución; los JSON A–D no almacenan esos metadatos completos.
+- 20 casos × 3 repeticiones por configuración: exactitud A=.3500, B=.3500, C=.4833 y D=.4833; ninguna cumple todas las metas de `contrato_calidad.yaml`.
+- Diferencias: C−B +.13 (IC 95 % .05–.2167); D−C +.00 (IC 95 % −.0833–.0833). No atribuir mejora a controles ni a una etapa individual.
+- Consistencia por tipo de acierto A/B: normales 12/12, fuera 4/4, adversariales 4/4; C: 8/12, 4/4, 4/4; D: 9/12, 4/4, 4/4. Casos variables: C t01/t04/t05/t08; D t04/t05/t08.
+- Limitación de confidencialidad: `filtrar_clasificacion` y `sanear_salida` siguen pendientes para Avance 2; `opcional` devuelve las entradas originales. PII=0 en la salida medida no garantiza que el contexto enviado al modelo carezca de datos sensibles.
