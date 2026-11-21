@@ -43,9 +43,29 @@ def detectar(texto: str) -> list[tuple[str, str]]:
 
 def enmascarar(texto: str) -> tuple[str, dict[str, str]]:
     """Reemplaza PII por marcadores <TIPO_n>. Devuelve (texto_enmascarado, mapa marcador→valor)."""
-    # TODO(AV2): implementa esta parte (ver docstring y pruebas)
-    raise NotImplementedError("Pendiente: AV2")
+    mapa: dict[str, str] = {}
+    contadores: dict[str, int] = {}
+    resultado = texto
 
+    def _reemplazar(tipo: str, valor: str) -> str:
+        for k, v in mapa.items():
+            if v == valor:
+                return k
+        contadores[tipo] = contadores.get(tipo, 0) + 1
+        marcador = f"<{tipo}_{contadores[tipo]}>"
+        mapa[marcador] = valor
+        return marcador
+
+    resultado = BLOQUE_CONF.sub(lambda m: _reemplazar("CONFIDENCIAL", m.group(0)), resultado)
+    for tipo, patron in PATRONES.items():
+        def _sub_fn(m: re.Match, t: str = tipo) -> str:
+            val = m.group(0).strip()
+            if t == "TARJETA" and (not _luhn(val) or len(re.sub(r"\D", "", val)) == 18):
+                return m.group(0)
+            return _reemplazar(t, val)
+        resultado = re.sub(patron, _sub_fn, resultado)
+
+    return resultado, mapa
 
 def contiene_pii(texto: str) -> bool:
     return bool(detectar(texto))

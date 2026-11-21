@@ -73,7 +73,10 @@ if not st.session_state.get("token"):
             mostrar_error(st_, cuerpo)
     if c2.button("Registrarme", use_container_width=True):
         st_, cuerpo = llamar("POST", "/auth/registro", json={"email": email, "contrasena": contrasena})
-        st.sidebar.success("Cuenta creada; ahora entra.") if st_ == 201 else mostrar_error(st_, cuerpo)
+        if st_ == 201:
+            st.sidebar.success("Cuenta creada; ahora entra.")
+        else:
+            mostrar_error(st_, cuerpo)
     st.title("🏦 FinNorte · Producto")
     st.info("Inicia sesión para usar el asistente. Tu token dura 15 minutos.")
     st.stop()
@@ -102,49 +105,64 @@ if modo.startswith("Preguntar"):
             st.caption(f"⏱ {out['latencia_ms']:.0f} ms · 💲 US${out['costo_usd']:.5f}")
 
 elif modo == "Mi variante":
-    st.title(f"🧩 Mi variante · {salud.get('variante', '')}")
-    campo = st.selectbox("Campo de entrada", ["pregunta", "requisito", "codigo", "log"])
-    texto = st.text_area("Entrada", height=200)
-    if st.button("Ejecutar", type="primary", disabled=not texto.strip()):
-        with st.spinner("Recuperando contexto, corriendo el flujo y validando…"):
-            st_, out = llamar("POST", "/v1/variante", json={"entrada": {campo: texto}})
+    st.title(f"🚨 Triage de Incidentes · {salud.get('variante', 'v5-triage')}")
+    servicio = st.text_input("Microservicio afectado (opcional)", placeholder="pagos-api")
+    texto = st.text_area("Traza de logs o descripción del incidente", height=200,
+                         placeholder="2026-11-24T10:05:12 [ERROR] pagos-api: Timeout 504 contra gateway-spei...")
+    if st.button("Ejecutar triage", type="primary", disabled=len(texto.strip()) < 10):
+        with st.spinner("Recuperando runbooks, ejecutando pipeline de 4 etapas y validando PII/citas…"):
+            payload = {"log": texto}
+            if servicio.strip():
+                payload["servicio"] = servicio.strip()
+            st_, out = llamar("POST", "/v1/triage", json=payload)
         if st_ != 200:
             mostrar_error(st_, out)
         else:
             (st.warning if out.get("abstuvo") else st.success)(out.get("respuesta", ""))
             if out.get("fuentes"):
-                with st.expander("Fuentes"):
+                with st.expander(f"Runbooks y postmortems citados ({len(out['fuentes'])})"):
                     st.write(out["fuentes"])
             if out.get("artefacto"):
-                with st.expander("Artefacto estructurado"):
+                with st.expander("Artefacto estructurado de Triage (JSON)"):
                     st.json(out["artefacto"])
             if out.get("errores_citas"):
                 st.error(f"Citas con problema: {out['errores_citas']}")
+            st.caption(f"⏱ {out.get('latencia_ms', 0):.0f} ms · 💲 US${out.get('costo_usd', 0):.5f}")
 
 else:
-    st.title("🤖 Agente con confirmación humana")
-    st.caption("El agente consulta el manual y las ventanas de despliegue. Crear un ticket requiere TU autorización.")
-    tarea = st.text_area("Tarea", "Quiero desplegar un cambio de riesgo alto en pagos-api el 2026-11-24. ¿Se puede? Si sí, crea el ticket.")
+    st.title("🤖 Agente de Triage v5 con Confirmación Humana")
+    st.caption("Consulta logs (máx. 2h, PII enmascarada) y runbooks. Crear tickets de incidente requiere TU autorización.")
+    tarea = st.text_area(
+        "Tarea de investigación / triage",
+        "Revisa los logs de pagos-api entre 2026-11-24T10:00:00 y 2026-11-24T11:30:00 con patrón ERROR, "
+        "consulta los runbooks de severidad y si amerita abre un ticket de incidente.",
+    )
     if st.button("Ejecutar agente", type="primary"):
-        with st.spinner("El agente está trabajando (cada paso es una llamada a Gemini)…"):
+        with st.spinner("El agente está consultando herramientas y validando reglas de triage…"):
             st_, out = llamar("POST", "/v1/agente", json={"tarea": tarea})
         if st_ != 200:
             mostrar_error(st_, out)
         else:
             st.session_state["agente"] = out
+            st.session_state.pop("ultimo", None)
     out = st.session_state.get("agente")
     if out:
         (st.success if out["terminado"] else st.error)(out["respuesta"])
+        if out.get("fuentes"):
+            with st.expander(f"Fuentes citadas ({len(out['fuentes'])})"):
+                st.write(out["fuentes"])
         v = out["validador"]
-        (st.success if v["ok"] else st.error)("Validador: OK" if v["ok"] else "Validador: " + " · ".join(v["hallazgos"]))
+        (st.success if v["ok"] else st.error)(
+            "Validador v5-triage: OK" if v["ok"] else "Validador v5-triage bloqueó la acción: " + " · ".join(v["hallazgos"])
+        )
         for p in out["pasos"]:
             with st.expander(f"Paso {p['n']} · {p['accion']} {p['herramienta'] or ''} · {p['estado']}"):
                 st.json(p)
         for p in out["pendientes"]:
-            st.warning(f"**Acción pendiente:** `{p['herramienta']}`")
-            st.json(p["argumentos"])                         # los datos EXACTOS que se van a ejecutar
+            st.warning(f"**Acción sensible pendiente:** `{p['herramienta']}`")
+            st.json(p["argumentos"])
             c1, c2 = st.columns(2)
-            for col, aprobar, etiqueta in ((c1, True, "✅ Autorizar"), (c2, False, "⛔ Rechazar")):
+            for col, aprobar, etiqueta in ((c1, True, "✅ Autorizar ticket"), (c2, False, "⛔ Rechazar ticket")):
                 if col.button(etiqueta, key=f"{p['id']}-{aprobar}", use_container_width=True):
                     st_, r = llamar("POST", f"/v1/agente/confirmar/{p['id']}", json={"aprobar": aprobar})
                     if st_ != 200:

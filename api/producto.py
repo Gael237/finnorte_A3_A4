@@ -35,7 +35,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 from api.auth import VIGENCIA_S, Autenticador, ErrorAuth, validar_token
-from finnorte import agente_servicio, llm, variante
+from finnorte import agente_servicio, llm, herramientas, variante
 from finnorte.caso_guia import asistente as caso_guia
 from finnorte.caso_guia import motor_demo
 from finnorte.caso_guia.herramientas import herramientas_caso_guia
@@ -175,7 +175,7 @@ class Decision(BaseModel):
 
 
 def _herramientas():
-    return herramientas_caso_guia()     
+    return herramientas_caso_guia() + herramientas.herramientas_triage()    
 
 class EntradaTriage(BaseModel):
     log: str = Field(
@@ -206,8 +206,13 @@ def ejecutar_triage(e: EntradaTriage, usuario: str = Depends(usuario_actual)):
 @app.post("/v1/agente")
 def agente(t: Tarea, usuario: str = Depends(usuario_actual)):
     try:
-        # A4: agente_servicio.iniciar(t.tarea, usuario, _herramientas(), ejecutor=herramientas.ejecutar_agente, validador=tu_validador)
-        return agente_servicio.iniciar(t.tarea, usuario, _herramientas())
+        return agente_servicio.iniciar(
+            t.tarea,
+            usuario,
+            _herramientas(),
+            validador=herramientas.validar_plan_triage,
+            ejecutor=herramientas.ejecutar_agente,
+        )
     except llm.LLMError as e:
         raise ErrorHTTP(503, "Proveedor del modelo no disponible", str(e)[:200])
 
