@@ -175,7 +175,32 @@ class Decision(BaseModel):
 
 
 def _herramientas():
-    return herramientas_caso_guia()     # A4: agrega aquí las herramientas de TU variante
+    return herramientas_caso_guia()     
+
+class EntradaTriage(BaseModel):
+    log: str = Field(
+        min_length=10,
+        max_length=15000,
+        description="Traza o registro de logs del incidente para ejecutar el triage v5",
+    )
+    servicio: str | None = Field(
+        default=None,
+        max_length=80,
+        description="Nombre opcional del microservicio afectado (ej. pagos-api)",
+    )
+
+
+@app.post("/v1/triage")
+def ejecutar_triage(e: EntradaTriage, usuario: str = Depends(usuario_actual)):
+    """Endpoint propio de la variante v5-triage conectado a variante.sistema() con autenticación y límite de tasa."""
+    texto_log = f"[Servicio: {e.servicio}]\n{e.log}" if e.servicio else e.log
+    try:
+        out = variante.sistema({"log": texto_log})
+    except ValueError as err:
+        raise ErrorHTTP(422, "Entrada inválida", str(err)[:200])
+    except llm.LLMError as err:
+        raise ErrorHTTP(503, "Proveedor del modelo no disponible", str(err)[:200])
+    return out                                                  # A4: agrega aquí las herramientas de TU variante
 
 
 @app.post("/v1/agente")
